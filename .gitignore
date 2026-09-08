@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Generated results
+results/*.csv
+results/*.json
+plots/*.png
+plots/*.jpg
+plots/*.pdf
+
+# Python test/cache
+.pytest_cache/
+.coverage
+
+# Streamlit
+.streamlit/
+
+# Temporary files
+*.tmp
+*.log
