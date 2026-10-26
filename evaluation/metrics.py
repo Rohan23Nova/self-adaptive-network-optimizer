@@ -13,6 +13,8 @@ No experimental values are generated or fabricated here.
 
 from __future__ import annotations
 
+import math
+import statistics
 from typing import Iterable
 
 import networkx as nx
@@ -258,4 +260,77 @@ def calculate_performance_delta(
             new_metrics["route_cost"]
             - old_metrics["route_cost"]
         ),
+    }
+
+
+def calculate_confidence_interval(
+    values: list[float],
+    confidence: float = 0.95,
+) -> tuple[float, float]:
+    """
+    Calculate two-sided confidence interval for a list of values.
+
+    Uses Student's t-distribution for small/finite samples.
+    Returns (lower_bound, upper_bound).
+    """
+    clean_values = [float(v) for v in values if math.isfinite(v)]
+    n = len(clean_values)
+    if n == 0:
+        return (float("nan"), float("nan"))
+    if n == 1:
+        return (clean_values[0], clean_values[0])
+
+    mean_val = statistics.mean(clean_values)
+    std_val = statistics.stdev(clean_values)
+    if std_val == 0.0:
+        return (float(mean_val), float(mean_val))
+
+    try:
+        import scipy.stats as stats
+        t_crit = float(stats.t.ppf((1.0 + confidence) / 2.0, df=n - 1))
+    except Exception:
+        # Standard normal approximation (1.96 for 95%)
+        t_crit = 1.95996
+
+    margin = t_crit * (std_val / math.sqrt(n))
+    return (float(mean_val - margin), float(mean_val + margin))
+
+
+def calculate_summary_statistics(
+    values: list[float],
+    confidence: float = 0.95,
+) -> dict[str, float]:
+    """
+    Calculate descriptive statistics including mean, std, median, min, max, and 95% CI.
+    """
+    clean_values = [float(v) for v in values if math.isfinite(v)]
+    n = len(clean_values)
+    if n == 0:
+        return {
+            "count": 0,
+            "mean": float("nan"),
+            "std": float("nan"),
+            "median": float("nan"),
+            "min": float("nan"),
+            "max": float("nan"),
+            "ci_95_lower": float("nan"),
+            "ci_95_upper": float("nan"),
+        }
+
+    mean_val = float(statistics.mean(clean_values))
+    std_val = float(statistics.stdev(clean_values)) if n > 1 else 0.0
+    median_val = float(statistics.median(clean_values))
+    min_val = float(min(clean_values))
+    max_val = float(max(clean_values))
+    ci_lower, ci_upper = calculate_confidence_interval(clean_values, confidence=confidence)
+
+    return {
+        "count": n,
+        "mean": mean_val,
+        "std": std_val,
+        "median": median_val,
+        "min": min_val,
+        "max": max_val,
+        "ci_95_lower": ci_lower,
+        "ci_95_upper": ci_upper,
     }

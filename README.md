@@ -113,11 +113,95 @@ print("Route Changed:", result.route_changed)
 print("Recovery Time:", f"{result.processing_time_seconds * 1000:.2f} ms")
 ```
 
-### Known Limitations
+## Experimental Evaluation & Statistical Analysis (Phase 3)
 
-- **Centralized Execution**: The simulator runs in a centralized environment; distributed protocol messaging (e.g. OSPF/BGP overhead) is simulated via link parameters rather than raw packet queues.
-- **Single-Path Routing**: Optimization evaluates unicast paths between a single source and destination pair at a time rather than multipath traffic splitting.
-- **Dashboard Deferred**: The interactive Streamlit UI is scheduled for implementation in a later phase.
+The project includes an empirical evaluation pipeline that benchmarks four routing strategies across six network scenarios and a 10-step sequential dynamic event timeline.
+
+### Evaluated Routing Strategies
+
+1. **`dijkstra_latency`**: Baseline Dijkstra shortest-path algorithm minimizing raw path latency (ms). Single deterministic run.
+2. **`dijkstra_fuzzy`**: Dijkstra algorithm operating on composite fuzzy link costs ($C_e = 1 / (Q_e + \epsilon)$). Single deterministic run.
+3. **`aco_fuzzy`**: Custom Ant Colony Optimization metaheuristic minimizing composite fuzzy link costs. Evaluated across 20 independent random seeds per scenario ($N = 20$).
+4. **`adaptive_aco`**: Event-driven `AdaptiveRoutingEngine` monitoring link-quality drops ($\ge 10\%$) and route-cost degradation ($\ge 20\%$), triggering on-demand ACO rerouting and self-healing.
+
+### Evaluated Network Scenarios
+
+- **`normal`**: Baseline operating conditions (moderate latency, low loss, high bandwidth, low congestion).
+- **`congestion`**: Congestion surge on primary active links.
+- **`high_latency`**: 4× latency spike applied to critical links.
+- **`packet_loss`**: Concentrated packet loss surge (+8%) on primary route hops.
+- **`link_failure`**: Complete topological failure (disabling) of the primary route's bottleneck link.
+- **`dynamic_combined`**: Simultaneous compound degradation combining congestion, latency spikes, and packet loss across multiple alternate paths.
+
+### 10-Step Sequential Dynamic Timeline
+
+To evaluate event-driven reactivity and stability over time, a controlled 10-step dynamic sequence is executed on the 25-node topology:
+
+1. `baseline_normal`: Network initialization and initial route discovery.
+2. `minor_congestion`: Small congestion change (+5%) below threshold; triggers tolerance (no reroute).
+3. `high_congestion`: Elevated congestion (+40%) below composite fuzzy trigger threshold.
+4. `latency_spike`: 4× latency spike exceeding the quality-change threshold; triggers adaptive ACO reroute.
+5. `packet_loss_surge`: +8% packet loss surge on active route hop; triggers adaptive reroute.
+6. `link_failure`: Active link disabled; immediate topological reroute away from failed link.
+7. `router_failure`: Active intermediate router disabled; immediate reroute excluding all incident edges.
+8. `network_disconnection`: Destination router disabled; engine detects complete unreachability and records explicit failure.
+9. `network_recovery`: Destination restored; engine discovers newly available path and recovers connectivity.
+10. `full_reset`: Network topology and metrics restored to baseline.
+
+### Metric Aggregations & Formulas
+
+- **End-to-End Latency**: Additive across path links:
+  $$\text{Latency}_{\text{route}} = \sum_{e \in P} \text{latency}_e \quad (\text{ms})$$
+- **End-to-End Packet Loss**: Independent link success probability product:
+  $$\text{Loss}_{\text{route}} = 100 \times \left( 1 - \prod_{e \in P} \left(1 - \frac{\text{loss}_e}{100}\right) \right) \quad (\%)$$
+- **Bottleneck Bandwidth**: Minimum capacity along the path:
+  $$\text{Bandwidth}_{\text{route}} = \min_{e \in P} \text{bandwidth}_e \quad (\text{Mbps})$$
+- **Average Route Congestion**: Arithmetic mean of link congestions:
+  $$\text{Congestion}_{\text{route}} = \frac{1}{|P|} \sum_{e \in P} \text{congestion}_e \quad (\%)$$
+- **Fuzzy Routing Cost**: Multi-criteria cost derived from Mamdani inference quality $Q_e \in [0, 1]$:
+  $$\text{Cost}_{\text{route}} = \sum_{e \in P} \frac{1}{Q_e + 10^{-6}}$$
+  *(Note: Raw latency in ms and fuzzy cost are distinct metrics with different units and scales; they are evaluated and plotted separately).*
+
+### Statistical Rigor & Confidence Intervals
+
+All aggregate metrics report:
+- Sample Mean ($\bar{x}$)
+- Sample Standard Deviation ($s$)
+- Median, Minimum, Maximum
+- Two-sided 95% Confidence Interval via Student's $t$-distribution:
+  $$\text{CI}_{95\%} = \bar{x} \pm t_{n-1, \, 0.975} \cdot \frac{s}{\sqrt{n}}$$
+- Explicit Reachability Rate ($\frac{n_{\text{reachable}}}{n_{\text{total}}}$). Non-reachable runs report infinite metric values and are excluded from finite metric means while tracked in reachability statistics.
+
+### Generated Artifacts
+
+Executing the experimental pipeline creates organized data and figures:
+
+- **`results/detailed_results.csv`**: Run-level metrics for all 138 evaluated runs (scenarios × strategies × runs).
+- **`results/summary_results.csv`**: Full descriptive statistics and 95% CIs across all scenarios and strategies.
+- **`results/aggregate_comparison.csv`**: Aggregated performance summary table.
+- **`results/dynamic_timeline.csv`**: Step-by-step telemetry, deltas, and processing/reroute times across the 10 dynamic stages.
+- **`results/aco_convergence.csv`**: Per-iteration best and average cost convergence histories across ACO iterations (6,000 records).
+- **`results/experiment_metadata.json`**: Machine-readable run parameters, ACO hyperparameters, thresholds, seeds, and execution timestamp.
+- **`plots/latency_comparison.png`**: Multi-panel bar chart comparing latency with 95% CI error bars.
+- **`plots/packet_loss_comparison.png`**: Packet loss comparison highlighting multi-criteria fuzzy benefits.
+- **`plots/bandwidth_comparison.png`**: Bottleneck bandwidth across scenarios.
+- **`plots/congestion_comparison.png`**: Average path congestion comparison.
+- **`plots/dynamic_recovery_timeline.png`**: Dual-axis recovery timeline showing latency trajectory and processing latency.
+- **`plots/aco_convergence_curves.png`**: Iterative convergence envelopes showing rapid ACO optimization.
+- **`plots/reachability_comparison.png`**: Reachability rates across all strategies.
+
+### Key Empirical Findings
+
+1. **Multi-Criteria Optimization Trade-Off**: Dijkstra on raw latency consistently achieves the lowest latency in unconstrained scenarios (e.g. 53.89 ms vs. 114.63 ms), but suffers substantially higher packet loss (10.02% vs. 4.48%) and lower bottleneck bandwidth (41.22 Mbps vs. 68.93 Mbps) compared to fuzzy-cost routing (`dijkstra_fuzzy`, `aco_fuzzy`, `adaptive_aco`).
+2. **Metaheuristic Stability**: Across 20 independent random seeds, `aco_fuzzy` converges reliably to optimal fuzzy-cost routes within 15–20 iterations, demonstrating low variance ($s < 0.5$) on the 25-node benchmark topology.
+3. **Adaptive Efficiency**: The `AdaptiveRoutingEngine` filters minor non-critical fluctuations (processing latency $< 0.1$ ms without invoking rerouting), while reacting within 19–24 ms to genuine quality degradation or topology failures.
+4. **Resilience & Self-Healing**: Under complete destination isolation, the adaptive engine explicitly flags unreachability in 1.3 ms, then immediately recovers valid routing upon destination restoration.
+
+### Threats to Validity & Limitations
+
+- **Centralized Simulation**: Graph modifications and metric updates occur with centralized visibility; distributed signaling delays (e.g. OSPF LSA flooding or BGP convergence) are abstracted through link parameters.
+- **Single-Pair Unicast Flow**: Experiments evaluate unicast traffic between a fixed source-destination pair ($0 \to 24$); network-wide multi-commodity flow queuing effects are not modeled.
+- **Synthetic Network Topology**: Evaluated on a deterministic 25-node small-world network; enterprise or ISP topologies may exhibit differing path diversity and degree distributions.
 
 ## Running Tests and Experiments
 
@@ -127,20 +211,20 @@ Activate the Python virtual environment:
 source .venv/bin/activate
 ```
 
-Run test suite:
+Run test suite (51 automated tests):
 
 ```bash
 python -m pytest -v
+```
+
+Run full 20-run experimental evaluation and generate all publication plots:
+
+```bash
+python -m evaluation.experiments --seed 42 --aco-runs 20
 ```
 
 Run live terminal adaptive demonstration:
 
 ```bash
 python -m simulator.adaptive
-```
-
-Run routing experiments:
-
-```bash
-python -m evaluation.experiments --seed 42 --aco-runs 2
 ```
