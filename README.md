@@ -203,6 +203,66 @@ Executing the experimental pipeline creates organized data and figures:
 - **Single-Pair Unicast Flow**: Experiments evaluate unicast traffic between a fixed source-destination pair ($0 \to 24$); network-wide multi-commodity flow queuing effects are not modeled.
 - **Synthetic Network Topology**: Evaluated on a deterministic 25-node small-world network; enterprise or ISP topologies may exhibit differing path diversity and degree distributions.
 
+## Interactive Streamlit Dashboard (Phase 4)
+
+A desktop-first interactive web application built with Streamlit and Plotly, styled with a premium dark navy/charcoal technical aesthetic for live academic demonstrations and viva presentations.
+
+### Dashboard Sections
+
+1. **Overview**: Real-time operational dashboard with compact KPI metrics (Active Routers, Total Links, Route Hops, End-to-End Latency, Packet Loss, Bottleneck Bandwidth, Average Congestion), composite fuzzy routing cost, operational status badges, and academic architecture callouts.
+2. **Live Network Simulator**: Interactive Plotly topology visualizer distinguishing active links, highlighted active routes, disabled links (dashed red), and disabled routers (red 'X'). Allows dynamic source/destination selection and provides live event injection (link congestion, latency spikes, packet loss surges, link/router failure and repair, and compound scenarios).
+3. **Routing Strategy Comparison**: Real-time evaluation of all four routing algorithms (`dijkstra_latency`, `dijkstra_fuzzy`, `aco_fuzzy`, `adaptive_aco`) under identical network conditions, comparing latency, loss, bandwidth, congestion, hops, and execution runtimes with explicit objective labeling and unit separation.
+4. **Experimental Results**: Interactive inspector for precomputed Phase 3 benchmark datasets (`results/summary_results.csv`, `detailed_results.csv`, `dynamic_timeline.csv`, `aco_convergence.csv`, `experiment_metadata.json`), providing scenario metric charts with 95% CIs, dynamic 10-step trajectory curves, ACO convergence envelopes, and raw data viewers.
+5. **Adaptive Explainability**: Plain-English diagnostic breakdown of the engine's most recent routing decision, explaining whether the change was tolerated (below sensitivity threshold), triggered by fuzzy quality/cost degradation, or forced by topological failure, complete with quantitative before/after deltas and processing vs rerouting latencies.
+6. **Event History**: Chronological audit trail logging every injected event, affected components, trigger status, route transitions, latency changes, and execution timings with CSV export support.
+
+### Launching the Dashboard
+
+Activate the virtual environment and start Streamlit:
+
+```bash
+source .venv/bin/activate
+streamlit run dashboard/app.py
+```
+
+The application will be accessible at `http://localhost:8501`.
+
+### 3-Minute Viva / Demonstration Walkthrough
+
+Follow this concise sequence to demonstrate all core soft-computing and adaptive features during a project presentation:
+
+1. **Step 1 — Baseline Inspection (Overview & Simulator)**:
+   - Launch the dashboard and navigate to **Overview**.
+   - Show the initial optimal route (`0 → 1 → 4 → 6 → 7`), low packet loss (~1.6%), high bottleneck bandwidth (~75 Mbps), and composite fuzzy cost (~2.0).
+2. **Step 2 — Threshold Tolerance / Anti-Flapping (Live Simulator)**:
+   - Go to **Live Network Simulator**, select link `(0, 1)`, and apply a minor **Congestion Increase (+10%)**.
+   - Observe that the engine evaluates the change in `< 0.1 ms` and reports `TOLERATED (BELOW THRESHOLD)`. Point out that the route does not flap unnecessarily.
+3. **Step 3 — Severe Event & Adaptive Rerouting**:
+   - In **Live Network Simulator**, select link `(0, 1)` and apply a severe **Latency Spike (3.0x)**.
+   - The relative quality drop exceeds the 10% sensitivity threshold $\implies$ `REROUTE TRIGGERED`.
+   - The graph immediately highlights the newly selected path bypassing the degraded link.
+4. **Step 4 — Topological Link Failure & Failure Recovery**:
+   - Switch to **Link Failure / Restore** tab and disable link `(0, 1)`.
+   - Show immediate topological invalidation forcing ACO to reroute via alternate hops.
+   - Open **Adaptive Explainability** to show the plain-English narrative of why failure forced immediate reroute and inspect the before/after latency and loss deltas.
+5. **Step 5 — Routing Strategy Comparison**:
+   - Open **Routing Strategy Comparison**.
+   - Show how `dijkstra_latency` achieves slightly lower latency at the expense of higher packet loss and lower bandwidth, while `dijkstra_fuzzy` and `aco_fuzzy` balance all four QoS dimensions.
+6. **Step 6 — Network Disconnection & Self-Healing (Optional)**:
+   - In **Live Network Simulator**, disable router `Node 7` (the destination).
+   - Show that the engine detects complete unreachability in `1.3 ms` and displays the `Destination Unreachable` banner.
+   - Click **Restore Router** or **Reset Network** to demonstrate seamless self-healing back to baseline.
+
+### Recommended Report / Viva Screenshots
+
+For the project report and slide deck, capture:
+1. **Overview Screen**: KPI metrics and active route telemetry.
+2. **Live Network Simulator (Normal Route)**: Full Plotly topology showing highlighted path.
+3. **Live Network Simulator (Rerouted State)**: Showing disabled link (dashed red) and new bypass path.
+4. **Strategy Comparison Matrix**: Grouped bar chart comparing Latency, Loss, Bandwidth, and Congestion across the 4 strategies.
+5. **Dynamic Timeline Plot (Experimental Results)**: Dual-axis chart of the 10-step recovery lifecycle.
+6. **Adaptive Explainability Card**: Natural language breakdown and delta impact cards.
+
 ## Running Tests and Experiments
 
 Activate the Python virtual environment:
@@ -211,10 +271,16 @@ Activate the Python virtual environment:
 source .venv/bin/activate
 ```
 
-Run test suite (51 automated tests):
+Run test suite (61 automated tests):
 
 ```bash
 python -m pytest -v
+```
+
+Launch Streamlit interactive dashboard:
+
+```bash
+streamlit run dashboard/app.py
 ```
 
 Run full 20-run experimental evaluation and generate all publication plots:

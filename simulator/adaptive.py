@@ -633,6 +633,20 @@ class AdaptiveRoutingEngine:
         self._update_all_link_caches()
         self._initialize_route()
 
+    def set_endpoints(self, source: int, destination: int) -> None:
+        """
+        Update source and destination endpoints and recompute initial route.
+        """
+        if source not in self.graph:
+            raise ValueError(f"Source node {source} not present in graph.")
+        if destination not in self.graph:
+            raise ValueError(f"Destination node {destination} not present in graph.")
+        if source == destination:
+            raise ValueError("Source and destination must be distinct.")
+        self.source = source
+        self.destination = destination
+        self._initialize_route()
+
 
 # ---------------------------------------------------------------------------
 # CLI demonstration
