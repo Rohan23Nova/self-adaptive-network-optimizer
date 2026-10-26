@@ -47,7 +47,10 @@ from simulator.events import (
     increase_latency,
     increase_packet_loss,
 )
-from simulator.graph_builder import build_experiment_graph
+from simulator.graph_builder import (
+    build_experiment_graph,
+    get_active_graph,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -103,15 +106,35 @@ def calculate_fuzzy_edge_costs(
 
 def choose_event_link(
     graph: nx.Graph,
+    source: int | None = None,
+    destination: int | None = None,
 ) -> tuple[int, int]:
     """
     Choose a deterministic link for degradation.
 
-    The selected link is chosen from active edges.
+    Prefers an active edge on the primary route between source and destination
+    so that scenario events actually impact the evaluated communication path.
+    Falls back to sorted active edges if nodes are not present or disconnected.
     """
 
+    if source is None:
+        source = SOURCE if SOURCE in graph else min(graph.nodes)
+    if destination is None:
+        destination = DESTINATION if DESTINATION in graph else max(graph.nodes)
+
+    active_graph = get_active_graph(graph)
+
+    if (
+        source in active_graph
+        and destination in active_graph
+        and nx.has_path(active_graph, source, destination)
+    ):
+        path = nx.shortest_path(active_graph, source, destination)
+        if len(path) >= 2:
+            return edge_key(path[0], path[1])
+
     active_edges = [
-        (u, v)
+        edge_key(u, v)
         for u, v, data in graph.edges(data=True)
         if data.get("enabled", True)
     ]
@@ -119,7 +142,6 @@ def choose_event_link(
     if not active_edges:
         raise RuntimeError("No active edges available.")
 
-    # Deterministic selection.
     active_edges.sort()
 
     return active_edges[0]

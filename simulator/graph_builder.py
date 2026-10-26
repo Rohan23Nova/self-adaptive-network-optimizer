@@ -168,7 +168,11 @@ def get_active_graph(graph: nx.Graph) -> nx.Graph:
     active.add_nodes_from(graph.nodes(data=True))
 
     for u, v, data in graph.edges(data=True):
-        if data.get("enabled", True):
+        if (
+            data.get("enabled", True)
+            and graph.nodes[u].get("enabled", True)
+            and graph.nodes[v].get("enabled", True)
+        ):
             active.add_edge(u, v, **data)
 
     # Remove isolated nodes only if they are not useful as source/destination.

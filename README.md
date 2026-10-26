@@ -53,14 +53,24 @@ dashboard/      Streamlit interface
 tests/          Correctness tests
 results/        Experimental CSV output
 plots/          Generated visualizations
+```
 
+## Running Tests and Experiments
 
-
----
-
-# 9. Make the first Git commit
-
-Before doing actual development:
+Activate the Python virtual environment:
 
 ```bash
-git add .
+source .venv/bin/activate
+```
+
+Run test suite:
+
+```bash
+python -m pytest -v
+```
+
+Run routing experiments:
+
+```bash
+python -m evaluation.experiments --seed 42 --aco-runs 2
+```

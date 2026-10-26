@@ -1,3 +1,8 @@
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 from simulator.graph_builder import build_demo_graph
 
 from routing.aco import AntColonyOptimizer

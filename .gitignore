@@ -21,6 +21,7 @@ env/
 # Generated results
 results/*.csv
 results/*.json
+results/*.tmp
 plots/*.png
 plots/*.jpg
 plots/*.pdf

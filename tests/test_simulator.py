@@ -107,3 +107,11 @@ def test_router_failure_and_restore():
     enable_router(graph, 2)
 
     assert graph.nodes[2]["enabled"] is True
+
+
+def test_get_active_graph_excludes_edges_of_disabled_node():
+    graph = build_demo_graph()
+    graph.nodes[1]["enabled"] = False
+    active = get_active_graph(graph)
+    for neighbor in graph.neighbors(1):
+        assert not active.has_edge(1, neighbor)

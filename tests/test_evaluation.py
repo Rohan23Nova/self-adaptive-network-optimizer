@@ -79,3 +79,30 @@ def test_summary_contains_expected_metrics():
     assert aco_summary["runs"] == 2
     assert aco_summary["route_cost_mean"] == 5.5
     assert aco_summary["route_cost_std"] > 0
+
+
+def test_scenario_events_affect_network_or_route():
+    from evaluation.experiments import (
+        route_metrics,
+        run_dijkstra_fuzzy,
+    )
+
+    base_graph = build_experiment_graph(num_nodes=25, seed=42)
+    normal_graph = create_scenario(base_graph, "normal")
+    normal_result = run_dijkstra_fuzzy(normal_graph)["result"]
+    normal_metrics = route_metrics(normal_graph, normal_result)
+
+    # In link failure, the primary link is disabled, forcing rerouting
+    failure_graph = create_scenario(base_graph, "link_failure")
+    failure_result = run_dijkstra_fuzzy(failure_graph)["result"]
+    assert failure_result.exists is True
+    assert failure_result.path != normal_result.path
+
+    # In congestion, congestion on the route increases
+    congestion_graph = create_scenario(base_graph, "congestion")
+    congestion_result = run_dijkstra_fuzzy(congestion_graph)["result"]
+    congestion_metrics = route_metrics(congestion_graph, congestion_result)
+    assert (
+        congestion_metrics["congestion_percent"]
+        > normal_metrics["congestion_percent"]
+    )
