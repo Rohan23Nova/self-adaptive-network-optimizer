@@ -6,3 +6,7 @@ matplotlib
 plotly
 streamlit
 pandas
+fastapi
+uvicorn
+pydantic
+httpx

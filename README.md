@@ -263,6 +263,75 @@ For the project report and slide deck, capture:
 5. **Dynamic Timeline Plot (Experimental Results)**: Dual-axis chart of the 10-step recovery lifecycle.
 6. **Adaptive Explainability Card**: Natural language breakdown and delta impact cards.
 
+## NEXUS FastAPI Backend (Phase 5)
+
+A high-performance asynchronous REST API built with FastAPI that exposes the underlying soft-computing engine to modern web frontends (e.g., React / Vite).
+
+```text
+React / Vite Frontend  ──►  FastAPI REST API (api/)  ──►  Python Soft-Computing Engine
+   (Web Interface)          (Endpoints & Session Mgr)       (Fuzzy, Dijkstra, ACO, Adaptive)
+```
+
+### API Endpoints Contract
+
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/api/health` | Service health status, uptime timestamp, and active session count. |
+| `GET` | `/api/network/topology` | Baseline network topology (`demo` 8-node or `experiment` 25-node). |
+| `POST` | `/api/sessions` | Create a new isolated simulation session with custom topology and thresholds. |
+| `GET` | `/api/sessions/{session_id}` | Retrieve session state, current route, topology snapshot, and QoS metrics. |
+| `PUT` | `/api/sessions/{session_id}/endpoints` | Update active source and destination routers; recomputes optimal route. |
+| `POST` | `/api/sessions/{session_id}/events` | Inject dynamic event (congestion, latency, loss, link/router failure, combined). |
+| `POST` | `/api/sessions/{session_id}/reset` | Reset session graph, edge cache, and ACO pheromones to baseline. |
+| `POST` | `/api/sessions/{session_id}/compare` | Compare all 4 routing strategies on an isolated snapshot of current conditions. |
+| `GET` | `/api/experiments/summary` | Retrieve Phase 3 aggregate descriptive statistics and 95% confidence intervals. |
+| `GET` | `/api/experiments/results` | Query run-level results with pagination and scenario/strategy filters. |
+| `GET` | `/api/experiments/convergence` | Fetch ACO iteration-by-iteration cost convergence histories. |
+| `GET` | `/api/experiments/timeline` | Fetch step-by-step telemetry across the 10-step sequential dynamic lifecycle. |
+
+### Session Isolation & Concurrency
+
+- **In-Memory Registry**: Each session is identified by a unique UUID4 and maintains an independent `AdaptiveRoutingEngine` with its own graph, edge caches, ACO router, and event audit history.
+- **Thread Safety**: Operations on each session are protected by a session-level lock, ensuring safe concurrent access.
+- **Non-Mutating Comparisons**: The `/api/sessions/{session_id}/compare` endpoint runs on an isolated deep copy of the session's active graph, guaranteeing that benchmark comparisons never alter active simulation state.
+- **Academic Scope Note**: In-memory session state is ephemeral and resets upon server restart.
+
+### Launching the FastAPI Backend
+
+Activate the virtual environment and start the Uvicorn server:
+
+```bash
+source .venv/bin/activate
+uvicorn api.main:app --host 127.0.0.1 --port 8000 --reload
+```
+
+Interactive API documentation and schema explorers are available at:
+- **Swagger UI**: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
+- **ReDoc**: [http://127.0.0.1:8000/redoc](http://127.0.0.1:8000/redoc)
+
+### Example API Requests
+
+#### 1. Create a Simulation Session
+```bash
+curl -X POST http://127.0.0.1:8000/api/sessions \
+  -H "Content-Type: application/json" \
+  -d '{"topology_type": "demo", "source": 0, "destination": 7, "quality_threshold": 0.10, "cost_threshold": 0.20}'
+```
+
+#### 2. Inject a Latency Spike Event
+```bash
+curl -X POST http://127.0.0.1:8000/api/sessions/<SESSION_ID>/events \
+  -H "Content-Type: application/json" \
+  -d '{"event_type": "latency", "edge": [0, 1], "multiplier": 3.0}'
+```
+
+#### 3. Compare Routing Strategies Live
+```bash
+curl -X POST http://127.0.0.1:8000/api/sessions/<SESSION_ID>/compare \
+  -H "Content-Type: application/json" \
+  -d '{"num_ants": 20, "num_iterations": 50}'
+```
+
 ## Running Tests and Experiments
 
 Activate the Python virtual environment:
@@ -271,13 +340,19 @@ Activate the Python virtual environment:
 source .venv/bin/activate
 ```
 
-Run test suite (61 automated tests):
+Run test suite (74 automated tests):
 
 ```bash
 python -m pytest -v
 ```
 
-Launch Streamlit interactive dashboard:
+Launch FastAPI backend server:
+
+```bash
+uvicorn api.main:app --host 127.0.0.1 --port 8000 --reload
+```
+
+Launch Streamlit interactive dashboard (fallback UI):
 
 ```bash
 streamlit run dashboard/app.py
