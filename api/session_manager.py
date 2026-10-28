@@ -19,6 +19,7 @@ from typing import Any, Optional
 import networkx as nx
 
 import config
+from api.config import MAX_SESSIONS
 from api.schemas import (
     CompareRequest,
     CompareStrategiesResponse,
@@ -507,6 +508,10 @@ class SessionManager:
             seed=seed,
         )
         with self._lock:
+            # Enforce capacity limit to prevent unbounded memory usage
+            if len(self._sessions) >= MAX_SESSIONS:
+                oldest_id = next(iter(self._sessions))
+                self._sessions.pop(oldest_id, None)
             self._sessions[session_id] = session
         return session
 

@@ -8,6 +8,64 @@ A Soft Computing project that simulates a dynamic computer network and combines:
 - NetworkX for graph simulation
 - Streamlit for interactive visualization
 
+## System Architecture
+
+```mermaid
+flowchart TD
+    subgraph Client["Presentation Tier (Browser)"]
+        UI["React 18 + Vite + TypeScript"]
+        Router["React Router v6"]
+        Canvas["@xyflow/react Interactive Topology Canvas"]
+        Charts["Recharts 3.x Visualizations & Error Bars"]
+        ClientAPI["Typed API Client (Fetch + AbortController)"]
+        UI --> Router
+        Router --> Canvas
+        Router --> Charts
+        Canvas & Charts --> ClientAPI
+    end
+
+    subgraph Backend["Application Tier (FastAPI Server - Port 8000)"]
+        FastAPIApp["FastAPI ASGI Core"]
+        CORS["CORS & Input Validation Middleware"]
+        RouterHealth["Health & Root Router (/api/health, /)"]
+        RouterNetwork["Network Topology Router (/api/network)"]
+        RouterSessions["Session Lifecycle Router (/api/sessions)"]
+        RouterExperiments["Research & Analytics Router (/api/experiments)"]
+        SessionMgr["In-Memory Thread-Safe SessionManager"]
+
+        FastAPIApp --> CORS
+        CORS --> RouterHealth & RouterNetwork & RouterSessions & RouterExperiments
+        RouterSessions --> SessionMgr
+    end
+
+    subgraph CoreEngine["Soft Computing & Optimization Tier (Python 3.12)"]
+        EngineAdaptive["AdaptiveRoutingEngine (simulator/adaptive.py)"]
+        FuzzyInference["Mamdani Fuzzy Inference System (fuzzy/inference.py)"]
+        ACO["Ant Colony Optimizer (routing/aco.py)"]
+        Dijkstra["Dijkstra Single & Fuzzy Baselines (routing/dijkstra_baseline.py)"]
+        NetSimulator["NetworkX Topology Graph (simulator/graph_builder.py)"]
+        Metrics["QoS Telemetry Calculator (evaluation/metrics.py)"]
+
+        SessionMgr --> EngineAdaptive
+        EngineAdaptive --> FuzzyInference
+        EngineAdaptive --> ACO
+        EngineAdaptive --> Dijkstra
+        EngineAdaptive --> NetSimulator
+        EngineAdaptive --> Metrics
+    end
+
+    subgraph Storage["Data & Benchmarking Tier"]
+        CSVResults["Empirical Datasets (results/summary_results.csv)"]
+        CSVTimeline["Dynamic Timeline (results/dynamic_timeline.csv)"]
+        CSVConvergence["ACO Histories (results/aco_convergence.csv)"]
+        MetadataJSON["Experiment Metadata (results/experiment_metadata.json)"]
+
+        RouterExperiments --> CSVResults & CSVTimeline & CSVConvergence & MetadataJSON
+    end
+
+    ClientAPI -->|HTTP REST / JSON| FastAPIApp
+```
+
 ## Core Parameters
 
 Each network link is characterized by:
@@ -454,38 +512,144 @@ Activate the Python virtual environment:
 source .venv/bin/activate
 ```
 
-Run test suite (74 automated tests):
+Run complete Python test suite (75 automated tests including 20-step E2E integration test):
 
 ```bash
 python -m pytest -v
 ```
 
-Launch FastAPI backend server:
+Run frontend test suite (21 automated unit and integration tests):
 
 ```bash
+cd frontend && npm test
+```
+
+Build frontend production bundle:
+
+```bash
+cd frontend && npm run build
+```
+
+---
+
+## Local Startup Experience
+
+NEXUS can be run locally in two separate terminals or via Docker Compose.
+
+### Option A: Standard Dual-Terminal Setup (Recommended for Development)
+
+**Terminal 1 — FastAPI Backend Server:**
+```bash
+cd /Users/rohankumar/Desktop/network-optimizer
+source .venv/bin/activate
 uvicorn api.main:app --host 127.0.0.1 --port 8000 --reload
 ```
+- API Base URL: `http://127.0.0.1:8000`
+- Interactive Swagger Docs: `http://127.0.0.1:8000/docs`
+- Health Telemetry: `http://127.0.0.1:8000/api/health`
 
-Launch React + Vite frontend application:
-
+**Terminal 2 — React + Vite Frontend:**
 ```bash
-cd frontend && npm run dev
+cd /Users/rohankumar/Desktop/network-optimizer/frontend
+npm install
+npm run dev
 ```
+- Web Application UI: `http://localhost:5173`
 
-Launch Streamlit interactive dashboard (fallback UI):
-
+**Terminal 3 (Optional) — Streamlit Interactive Fallback Dashboard:**
 ```bash
+cd /Users/rohankumar/Desktop/network-optimizer
+source .venv/bin/activate
 streamlit run dashboard/app.py
 ```
+- Streamlit UI: `http://localhost:8501`
 
-Run full 20-run experimental evaluation and generate all publication plots:
+---
 
-```bash
-python -m evaluation.experiments --seed 42 --aco-runs 20
-```
-
-Run live terminal adaptive demonstration:
+### Option B: Unified Containerized Setup (Docker Compose)
 
 ```bash
-python -m simulator.adaptive
+docker compose up --build
 ```
+- Frontend Web App: `http://localhost:3000`
+- Backend REST API: `http://localhost:8000`
+
+---
+
+## Deployment Readiness
+
+NEXUS is designed for straightforward containerized or cloud deployment:
+
+1. **Environment Configuration**:
+   - Backend `.env.example` provides safe default bindings (`HOST`, `PORT`, `ALLOWED_ORIGINS`, `MAX_SESSIONS`, `RESULTS_DIR`).
+   - Frontend `frontend/.env.example` configures `VITE_API_BASE_URL` with client-side fallback.
+   - All real `.env` files are strictly excluded via `.gitignore`.
+2. **Production CORS**:
+   - Configurable via `ALLOWED_ORIGINS` environment variable (comma-separated origins). Defaults to local Vite development ports.
+3. **Session Capacity & Bounded Computations**:
+   - Thread-safe `SessionManager` enforces a configurable maximum session count (`MAX_SESSIONS=100`) with automatic oldest-session eviction to prevent memory bloat.
+   - User-triggered ACO runs are bounded in Pydantic schemas (`num_ants <= 100`, `num_iterations <= 200`) to prevent denial-of-service computation spikes.
+4. **Distinction of Deployment Status**:
+   - The application is **deployment-ready** with multi-stage Dockerfiles and Nginx SPA routing. It is configured for zero-cost local execution without incurring cloud or subscription expenses.
+
+---
+
+## Three-Minute Live Demo Script for Instructor
+
+Follow this concise 3-minute sequence to demonstrate the entire soft computing pipeline:
+
+1. **Minute 1: The Network Laboratory & Nominal Baseline (`/lab`)**
+   - Open `http://localhost:5173/lab`.
+   - Show the interactive 8-node demo topology canvas: highlight the initial active route from Source $R_0$ to Destination $R_7$ (path `[0, 1, 4, 7]`).
+   - Click Router $R_1$ and Link $(0, 1)$ to display the Mamdani link inspector: show how Crisp Latency, Packet Loss, and Congestion are defuzzified into a unified scalar quality ($Q_e \approx 0.88$).
+
+2. **Minute 2: Dynamic Chaos Injection & Self-Adaptive Decision Loop (`/lab`)**
+   - In the Event Injection panel, apply **Minor Congestion** (+5% on link `(0, 1)`):
+     - Point out the **Decision Panel**: explain that the engine assessed the telemetry in $< 0.1\text{ ms}$, determined that the relative change was below the $10\%$ threshold, and tolerated the fluctuation without route flapping.
+   - Next, inject a **Severe Latency Spike** (4.0x on link `(0, 1)`):
+     - Observe the instant adaptive reroute: route changes dynamically to bypass the degraded link. Point out before/after latency and loss deltas.
+   - Cut link $(0, 1)$ completely (**Link Failure**):
+     - Show zero-delay physical path recovery and review the chronological audit trail in the **Event History** table below.
+
+3. **Minute 3: Strategy Comparison & Research Studio (`/strategies` & `/research`)**
+   - Navigate to `/strategies`:
+     - Click **Compare Live**: display side-by-side performance cards for all 4 algorithms. Explain the fundamental trade-off: Dijkstra Latency blindly minimizes delay at the cost of high packet loss, whereas Adaptive ACO achieves optimal multi-metric throughput.
+   - Navigate to `/research`:
+     - Display the **10-Step Sequential Dynamic Timeline**: show the dual-axis chart comparing recovery latency against inspection overhead.
+     - Switch to **ACO Convergence**: show how swarm intelligence stabilizes on the global optimum within 5–10 iterations.
+     - Click **Export CSV** to demonstrate reproducible empirical data export.
+
+---
+
+## Recommended Screenshots for Project Report
+
+When preparing the project submission report, capture the following key interfaces:
+
+1. **Figure 1: Full-Stack Architecture Diagram** — Mermaid workflow from Presentation Tier to Core Soft Computing Engines.
+2. **Figure 2: Interactive Network Laboratory Canvas (`/lab`)** — Topology graph with active route highlighting, router status badges, and selected link inspector.
+3. **Figure 3: Adaptive Decision Narrative (`/lab`)** — Step-by-step decision sequence card displaying trigger reason, latency delta, and engine recovery timings.
+4. **Figure 4: Unreachable Disconnection State (`/lab`)** — Destination router failure showing graceful partition handling and unreachable status badge.
+5. **Figure 5: Live Strategy Comparison Matrix (`/strategies`)** — Head-to-head performance cards and grouped metric comparison bar chart with distinct units.
+6. **Figure 6: Cross-Scenario Metric Analysis (`/research`)** — Bar chart comparing End-to-End Latency and Packet Loss across all 6 stress scenarios with 95% Confidence Interval error bars.
+7. **Figure 7: 10-Step Sequential Dynamic Timeline (`/research`)** — Dual-axis trajectory chart showing physical latency recovery alongside sub-millisecond inspection overhead.
+8. **Figure 8: ACO Swarm Cost Convergence (`/research`)** — Iteration-by-iteration convergence curves showing rapid stabilization within 5–10 iterations.
+
+---
+
+## Limitations and Future Work
+
+- **In-Memory Session Persistence**: Sessions are held in application memory. Server restarts clear active session history (precomputed Phase 3 empirical datasets remain safe and persistent in `results/`).
+- **Single-Host Simulation**: The network simulation executes locally using NetworkX rather than emulating distributed Linux kernel routing tables (e.g. Mininet).
+- **Synchronous ACO Execution**: ACO iterations execute synchronously per request. For topologies $> 100$ nodes with $> 500$ ants, asynchronous background workers (e.g. Celery / Redis) would be beneficial.
+
+---
+
+## Final Verification Summary
+
+- **Backend Python Test Suite**: **75 passed** (`pytest -v`), 0 failures.
+  - Includes unit tests for ACO, Dijkstra, fuzzy inference, graph simulator, experiments, Streamlit dashboard, FastAPI routers, and the complete 20-step E2E integration pipeline.
+- **Frontend Vitest Test Suite**: **21 passed** (`vitest run`), 0 failures across 3 test suites:
+  - Session lifecycle and persistence (`session.test.ts`)
+  - Laboratory components and interaction (`components.test.tsx`)
+  - Research studio visualizations, strategy comparison, and CSV export (`research.test.tsx`)
+- **TypeScript & Production Build**: Passed with zero errors (`tsc && vite build`).

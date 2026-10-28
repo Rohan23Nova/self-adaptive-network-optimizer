@@ -41,6 +41,21 @@ export const AboutPage: React.FC = () => {
       title: 'NEXUS React Frontend & Landing Page',
       desc: 'Engineered full-stack design system, landing page, responsive shell, typed API client, and simulation workbench.',
     },
+    {
+      num: 'Phase 07',
+      title: 'Interactive Network Laboratory',
+      desc: 'Built full-featured interactive topology canvas with router inspector, targeted chaos injection, closed-loop decision playback, and session audit history.',
+    },
+    {
+      num: 'Phase 08',
+      title: 'Research Studio & Strategy Comparison',
+      desc: 'Constructed live head-to-head algorithm benchmarking, cross-scenario charts with 95% CIs, 10-step sequential dynamic timeline, ACO convergence curves, and CSV export.',
+    },
+    {
+      num: 'Phase 09',
+      title: 'Full-Stack Integration, QA & Release',
+      desc: 'Finalized end-to-end integration, security and CORS hygiene, bounded computation safeguards, automated test gates, and deployment readiness.',
+    },
   ];
 
   return (

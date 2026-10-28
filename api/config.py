@@ -19,17 +19,25 @@ API_DESCRIPTION = (
 )
 API_VERSION = "1.0.0"
 
-# CORS configuration for local React / Vite development
-CORS_ORIGINS = [
-    "http://localhost:3000",
-    "http://localhost:5173",
-    "http://127.0.0.1:3000",
-    "http://127.0.0.1:5173",
-]
+# CORS configuration: allows override via environment variables (comma-separated)
+_env_origins = os.environ.get("ALLOWED_ORIGINS", os.environ.get("CORS_ORIGINS", ""))
+if _env_origins:
+    CORS_ORIGINS = [o.strip() for o in _env_origins.split(",") if o.strip()]
+else:
+    CORS_ORIGINS = [
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
+    ]
+
+# In-memory session capacity & limits
+MAX_SESSIONS = int(os.environ.get("MAX_SESSIONS", "100"))
+SESSION_TTL_SECONDS = int(os.environ.get("SESSION_TTL_SECONDS", "86400"))  # 24 hours
 
 # Results directory containing Phase 3 artifacts
 RESULTS_DIR = Path(os.environ.get("RESULTS_DIR", str(PROJECT_ROOT / "results")))
 
 # Server defaults
-DEFAULT_HOST = "127.0.0.1"
-DEFAULT_PORT = 8000
+DEFAULT_HOST = os.environ.get("HOST", "127.0.0.1")
+DEFAULT_PORT = int(os.environ.get("PORT", "8000"))

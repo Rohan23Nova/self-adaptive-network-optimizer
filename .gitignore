@@ -33,6 +33,13 @@ plots/*.pdf
 # Streamlit
 .streamlit/
 
+# Environment variables
+.env
+.env.*
+*.env
+!.env.example
+!frontend/.env.example
+
 # Frontend
 frontend/node_modules/
 frontend/dist/

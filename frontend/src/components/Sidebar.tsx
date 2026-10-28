@@ -22,7 +22,7 @@ export const Sidebar: React.FC<SidebarProps> = () => {
     {
       title: 'Lab & Simulation',
       items: [
-        { label: 'Network Lab', path: '/lab', icon: Cpu, badge: 'Phase 6/7' },
+        { label: 'Network Lab', path: '/lab', icon: Cpu, badge: 'Live' },
         { label: 'Routing Strategies', path: '/strategies', icon: Layers },
       ],
     },
