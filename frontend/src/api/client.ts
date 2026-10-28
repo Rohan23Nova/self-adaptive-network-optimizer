@@ -126,6 +126,22 @@ export const api = {
     });
   },
 
+  async resetSession(sessionId: string): Promise<SessionResponse> {
+    return request<SessionResponse>(`/api/sessions/${sessionId}/reset`, {
+      method: 'POST',
+    });
+  },
+
+  async updateEndpoints(
+    sessionId: string,
+    payload: { source: number; destination: number }
+  ): Promise<SessionResponse> {
+    return request<SessionResponse>(`/api/sessions/${sessionId}/endpoints`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  },
+
   async compareStrategies(
     sessionId: string,
     payload: CompareRequest = {}

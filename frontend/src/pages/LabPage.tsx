@@ -1,421 +1,504 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { AppShell } from '../components/AppShell';
-import { useApiHealth } from '../api/useApiHealth';
 import { api } from '../api/client';
-import type { SessionResponse, CreateSessionRequest } from '../api/types';
+import type {
+  SessionResponse,
+  EventRequest,
+  EventResponse,
+  CreateSessionRequest,
+} from '../api/types';
+
+import { NetworkGraph } from '../components/lab/NetworkGraph';
+import { InspectorPanel } from '../components/lab/InspectorPanel';
+import { EventControls } from '../components/lab/EventControls';
+import { DecisionPanel } from '../components/lab/DecisionPanel';
+import { EventHistory } from '../components/lab/EventHistory';
+
 import {
-  Server,
-  Play,
   RefreshCw,
-  Sparkles,
-  CheckCircle2,
+  Copy,
+  Check,
+  ArrowRight,
   AlertTriangle,
-  Sliders,
-  Radio,
-  ExternalLink,
+  ShieldAlert,
 } from 'lucide-react';
 
 export const LabPage: React.FC = () => {
-  const { status, data: healthData, refetch: refetchHealth } = useApiHealth(15000);
-
-  // Session form state
-  const [topologyType, setTopologyType] = useState<'demo' | 'experiment'>('demo');
-  const [source, setSource] = useState<number>(0);
-  const [destination, setDestination] = useState<number>(7);
-  const [qualityThreshold, setQualityThreshold] = useState<number>(0.15);
-  const [costThreshold, setCostThreshold] = useState<number>(0.20);
-  const [seed, setSeed] = useState<number>(42);
-
-  // Execution state
-  const [isInitializing, setIsInitializing] = useState(false);
-  const [activeSession, setActiveSession] = useState<SessionResponse | null>(null);
+  // Core Session State
+  const [session, setSession] = useState<SessionResponse | null>(null);
+  const [loadingSession, setLoadingSession] = useState<boolean>(true);
   const [sessionError, setSessionError] = useState<string | null>(null);
 
-  const handleInitSession = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsInitializing(true);
+  // Graph Selection State
+  const [selectedNode, setSelectedNode] = useState<number | null>(null);
+  const [selectedEdge, setSelectedEdge] = useState<[number, number] | null>(null);
+
+  // Event State
+  const [lastEvent, setLastEvent] = useState<EventResponse | null>(null);
+  const [eventHistory, setEventHistory] = useState<EventResponse[]>([]);
+  const [isSubmittingEvent, setIsSubmittingEvent] = useState<boolean>(false);
+  const [selectedHistoryIndex, setSelectedHistoryIndex] = useState<number | null>(null);
+
+  // Endpoints Form State
+  const [sourceInput, setSourceInput] = useState<number>(0);
+  const [destInput, setDestInput] = useState<number>(7);
+  const [isUpdatingEndpoints, setIsUpdatingEndpoints] = useState<boolean>(false);
+
+  // Feedback State
+  const [copiedSessionId, setCopiedSessionId] = useState<boolean>(false);
+  const [sideTab, setSideTab] = useState<'inspector' | 'controls'>('controls');
+
+  // Initialization Guard for React 18 StrictMode
+  const initStartedRef = useRef<boolean>(false);
+
+  // Initialize or restore session
+  const initializeSession = useCallback(async (topologyType: 'demo' | 'experiment' = 'demo') => {
+    setLoadingSession(true);
     setSessionError(null);
 
-    const payload: CreateSessionRequest = {
-      topology_type: topologyType,
-      source,
-      destination,
-      quality_threshold: qualityThreshold,
-      cost_threshold: costThreshold,
-      seed,
-    };
+    try {
+      const savedId = sessionStorage.getItem('nexus_session_id');
+
+      if (savedId && topologyType === 'demo') {
+        try {
+          const existing = await api.getSession(savedId);
+          setSession(existing);
+          setSourceInput(existing.source);
+          setDestInput(existing.destination);
+          setLoadingSession(false);
+          return;
+        } catch {
+          // If session expired or 404, fall through and create fresh session
+          sessionStorage.removeItem('nexus_session_id');
+        }
+      }
+
+      // Create fresh session
+      const req: CreateSessionRequest = {
+        topology_type: topologyType,
+        source: topologyType === 'demo' ? 0 : 0,
+        destination: topologyType === 'demo' ? 7 : 24,
+        quality_threshold: 0.15,
+        cost_threshold: 0.20,
+        seed: 42,
+      };
+
+      const newSession = await api.createSession(req);
+      setSession(newSession);
+      setSourceInput(newSession.source);
+      setDestInput(newSession.destination);
+      sessionStorage.setItem('nexus_session_id', newSession.session_id);
+    } catch (err: any) {
+      setSessionError(err?.message || 'Failed to initialize simulation session.');
+    } finally {
+      setLoadingSession(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!initStartedRef.current) {
+      initStartedRef.current = true;
+      initializeSession('demo');
+    }
+  }, [initializeSession]);
+
+  // Handler: Apply Dynamic Event
+  const handleApplyEvent = async (req: EventRequest) => {
+    if (!session || isSubmittingEvent) return;
+
+    setIsSubmittingEvent(true);
+    setSessionError(null);
 
     try {
-      const res = await api.createSession(payload);
-      setActiveSession(res);
-      setSessionError(null);
+      const res = await api.triggerEvent(session.session_id, req);
+      setLastEvent(res);
+      setEventHistory((prev) => [res, ...prev]);
+      setSelectedHistoryIndex(0);
+
+      // Refresh session state to get updated topology and route
+      const updated = await api.getSession(session.session_id);
+      setSession(updated);
     } catch (err: any) {
-      setSessionError(err?.message || 'Failed to initialize session with backend API.');
+      setSessionError(err?.message || 'Failed to apply dynamic event.');
     } finally {
-      setIsInitializing(false);
+      setIsSubmittingEvent(false);
     }
+  };
+
+  // Handler: Reset Network
+  const handleResetNetwork = async () => {
+    if (!session || isSubmittingEvent) return;
+
+    setIsSubmittingEvent(true);
+    setSessionError(null);
+
+    try {
+      const resetSessionRes = await api.resetSession(session.session_id);
+      setSession(resetSessionRes);
+
+      // Generate synthetic reset event response for decision display
+      const resetEvent: EventResponse = {
+        event_name: 'reset',
+        changed_edges: [],
+        changed_nodes: [],
+        previous_route: resetSessionRes.current_route,
+        previous_route_cost: resetSessionRes.current_route_cost,
+        triggered: true,
+        trigger_reason: 'manual_session_reset',
+        new_route: resetSessionRes.current_route,
+        new_route_cost: resetSessionRes.current_route_cost,
+        previous_metrics: resetSessionRes.metrics,
+        new_metrics: resetSessionRes.metrics,
+        performance_delta: {},
+        route_changed: false,
+        processing_time_ms: 0.1,
+        reroute_time_ms: 0.0,
+        unreachable: !resetSessionRes.reachable,
+      };
+
+      setLastEvent(resetEvent);
+      setEventHistory((prev) => [resetEvent, ...prev]);
+      setSelectedHistoryIndex(0);
+      setSelectedNode(null);
+      setSelectedEdge(null);
+    } catch (err: any) {
+      setSessionError(err?.message || 'Failed to reset network.');
+    } finally {
+      setIsSubmittingEvent(false);
+    }
+  };
+
+  // Handler: Update Endpoints
+  const handleUpdateEndpoints = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!session || isUpdatingEndpoints) return;
+
+    setIsUpdatingEndpoints(true);
+    setSessionError(null);
+
+    try {
+      const updated = await api.updateEndpoints(session.session_id, {
+        source: sourceInput,
+        destination: destInput,
+      });
+      setSession(updated);
+      setSelectedNode(null);
+      setSelectedEdge(null);
+    } catch (err: any) {
+      setSessionError(err?.message || 'Failed to update endpoints.');
+    } finally {
+      setIsUpdatingEndpoints(false);
+    }
+  };
+
+  // Handler: Switch Topology
+  const handleSwitchTopology = (newType: 'demo' | 'experiment') => {
+    if (session?.topology_type === newType) return;
+    setEventHistory([]);
+    setLastEvent(null);
+    setSelectedNode(null);
+    setSelectedEdge(null);
+    initializeSession(newType);
+  };
+
+  const copySessionId = () => {
+    if (!session) return;
+    navigator.clipboard.writeText(session.session_id);
+    setCopiedSessionId(true);
+    setTimeout(() => setCopiedSessionId(false), 2000);
   };
 
   return (
     <AppShell
-      title="Network Laboratory"
-      subtitle="Interactive simulation workbench for soft-computing network routing."
+      title="Interactive Network Laboratory"
+      subtitle="Real-time soft-computing workbench for topology inspection, chaos injection, and adaptive self-healing."
     >
-      <div className="space-y-8">
-        {/* Phase 6 Roadmap Callout */}
-        <div className="rounded-2xl bg-gradient-to-r from-nexus-900 via-nexus-850 to-nexus-900 border border-accent-cyan/30 p-5 shadow-lg relative overflow-hidden">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div className="flex items-start gap-3">
-              <div className="w-9 h-9 rounded-lg bg-accent-cyan/15 border border-accent-cyan/30 flex items-center justify-center shrink-0 mt-0.5">
-                <Sparkles className="w-5 h-5 text-accent-cyan" />
-              </div>
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <h3 className="font-semibold text-sm text-nexus-100">
-                    Simulation Workbench Shell — Phase 6 Foundation
-                  </h3>
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-accent-cyan-subtle text-accent-cyan border border-accent-cyan/20">
-                    Phase 6 Active
-                  </span>
-                </div>
-                <p className="text-xs text-nexus-400 leading-relaxed max-w-3xl">
-                  This shell connects to the verified FastAPI backend, provisions live simulation sessions, and verifies end-to-end telemetry. The interactive SVG topology canvas, live chaos injection, and ant colony path animations arrive in Phase 7.
-                </p>
-              </div>
-            </div>
-
-            <a
-              href="http://127.0.0.1:8000/docs"
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono text-nexus-300 hover:text-accent-cyan bg-nexus-900 border border-nexus-750 shrink-0"
-            >
-              <span>Swagger API Docs</span>
-              <ExternalLink className="w-3.5 h-3.5" />
-            </a>
-          </div>
-        </div>
-
-        {/* Grid: Live Connection Status & Session Creation */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          {/* Left Column: Session Configuration Form (7 cols) */}
-          <div className="lg:col-span-7 rounded-2xl bg-nexus-900/90 border border-nexus-800 p-6 space-y-6">
-            <div className="flex items-center justify-between border-b border-nexus-800 pb-4">
-              <div className="flex items-center gap-2">
-                <Sliders className="w-5 h-5 text-accent-cyan" />
-                <h3 className="font-semibold text-base text-nexus-100">
-                  Initialize Simulation Session
-                </h3>
-              </div>
-              <span className="text-xs font-mono text-nexus-500">
-                POST /api/sessions
-              </span>
-            </div>
-
-            <form onSubmit={handleInitSession} className="space-y-5 text-xs">
-              {/* Topology selection */}
-              <div className="space-y-2">
-                <label className="font-mono text-nexus-300 block font-medium">
-                  Network Topology:
-                </label>
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setTopologyType('demo');
-                      setSource(0);
-                      setDestination(7);
-                    }}
-                    className={`p-3 rounded-xl border text-left transition-all ${
-                      topologyType === 'demo'
-                        ? 'border-accent-cyan bg-nexus-850 text-nexus-100 shadow-sm'
-                        : 'border-nexus-800 bg-nexus-950 text-nexus-400 hover:border-nexus-700'
-                    }`}
-                  >
-                    <div className="font-bold text-sm">Demo Mesh (8 Nodes)</div>
-                    <div className="text-[11px] text-nexus-500 mt-0.5">
-                      14 links • 0 (Src) to 7 (Dst)
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setTopologyType('experiment');
-                      setSource(0);
-                      setDestination(24);
-                    }}
-                    className={`p-3 rounded-xl border text-left transition-all ${
-                      topologyType === 'experiment'
-                        ? 'border-accent-cyan bg-nexus-850 text-nexus-100 shadow-sm'
-                        : 'border-nexus-800 bg-nexus-950 text-nexus-400 hover:border-nexus-700'
-                    }`}
-                  >
-                    <div className="font-bold text-sm">Experiment Mesh (25 Nodes)</div>
-                    <div className="text-[11px] text-nexus-500 mt-0.5">
-                      50+ links • Multi-hop stress
-                    </div>
-                  </button>
-                </div>
-              </div>
-
-              {/* Endpoints */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="font-mono text-nexus-400 block">Source Router ID:</label>
-                  <input
-                    type="number"
-                    value={source}
-                    onChange={(e) => setSource(parseInt(e.target.value) || 0)}
-                    min={0}
-                    max={topologyType === 'demo' ? 7 : 24}
-                    className="w-full px-3 py-2 rounded-lg bg-nexus-950 border border-nexus-800 text-nexus-100 font-mono focus:border-accent-cyan focus:outline-none"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="font-mono text-nexus-400 block">
-                    Destination Router ID:
-                  </label>
-                  <input
-                    type="number"
-                    value={destination}
-                    onChange={(e) => setDestination(parseInt(e.target.value) || 0)}
-                    min={0}
-                    max={topologyType === 'demo' ? 7 : 24}
-                    className="w-full px-3 py-2 rounded-lg bg-nexus-950 border border-nexus-800 text-nexus-100 font-mono focus:border-accent-cyan focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              {/* Threshold Sliders */}
-              <div className="space-y-4 pt-2">
-                <div className="space-y-1.5">
-                  <div className="flex justify-between font-mono">
-                    <span className="text-nexus-400">Quality Drop Threshold (ΔQ thresh):</span>
-                    <span className="text-accent-cyan font-bold">
-                      {(qualityThreshold * 100).toFixed(0)}%
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min="0.05"
-                    max="0.50"
-                    step="0.01"
-                    value={qualityThreshold}
-                    onChange={(e) => setQualityThreshold(parseFloat(e.target.value))}
-                    className="w-full accent-accent-cyan bg-nexus-950 cursor-pointer"
-                  />
-                  <span className="text-[11px] text-nexus-500 block">
-                    Triggers ACO swarm rerouting when fuzzy link quality dips by this margin.
-                  </span>
-                </div>
-
-                <div className="space-y-1.5">
-                  <div className="flex justify-between font-mono">
-                    <span className="text-nexus-400">Cost Degradation Threshold (ΔC thresh):</span>
-                    <span className="text-accent-violet font-bold">
-                      {(costThreshold * 100).toFixed(0)}%
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min="0.05"
-                    max="0.50"
-                    step="0.01"
-                    value={costThreshold}
-                    onChange={(e) => setCostThreshold(parseFloat(e.target.value))}
-                    className="w-full accent-accent-violet bg-nexus-950 cursor-pointer"
-                  />
-                  <span className="text-[11px] text-nexus-500 block">
-                    Triggers rerouting if cumulative route cost inflates beyond this ratio.
-                  </span>
-                </div>
-              </div>
-
-              {/* Random Seed */}
-              <div className="space-y-1.5">
-                <label className="font-mono text-nexus-400 block">
-                  Deterministic Random Seed:
-                </label>
-                <input
-                  type="number"
-                  value={seed}
-                  onChange={(e) => setSeed(parseInt(e.target.value) || 0)}
-                  className="w-full px-3 py-2 rounded-lg bg-nexus-950 border border-nexus-800 text-nexus-100 font-mono focus:border-accent-cyan focus:outline-none"
-                />
-              </div>
-
-              {/* Submit Button */}
-              <button
-                type="submit"
-                disabled={isInitializing}
-                className="w-full py-3 px-4 rounded-xl font-semibold text-sm bg-gradient-to-r from-accent-cyan to-accent-cyan-hover text-nexus-950 shadow-md shadow-accent-cyan/15 hover:opacity-95 transition-all flex items-center justify-center gap-2 disabled:opacity-60"
-              >
-                {isInitializing ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                    <span>Contacting FastAPI Engine...</span>
-                  </>
-                ) : (
-                  <>
-                    <Play className="w-4 h-4" />
-                    <span>Initialize Simulation Session</span>
-                  </>
-                )}
-              </button>
-
-              {sessionError && (
-                <div className="p-3 rounded-lg bg-accent-coral-subtle border border-accent-coral/30 text-accent-coral text-xs flex items-start gap-2">
-                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-                  <div>
-                    <strong className="block font-semibold">Session Initialization Failed</strong>
-                    <span>{sessionError}</span>
-                  </div>
-                </div>
-              )}
-            </form>
-          </div>
-
-          {/* Right Column: Engine Telemetry & Active Session (5 cols) */}
-          <div className="lg:col-span-5 space-y-6">
-            {/* Live Backend Telemetry Card */}
-            <div className="rounded-2xl bg-nexus-900/90 border border-nexus-800 p-6 space-y-4">
-              <div className="flex items-center justify-between border-b border-nexus-800 pb-3">
-                <div className="flex items-center gap-2">
-                  <Server className="w-4 h-4 text-accent-cyan" />
-                  <h3 className="font-semibold text-sm text-nexus-100">
-                    FastAPI Engine Telemetry
-                  </h3>
-                </div>
+      <div className="space-y-6">
+        {/* TOP STATUS & CONTROL STRIP */}
+        <div className="rounded-2xl bg-nexus-900 border border-nexus-800 p-4 space-y-3 shadow-md">
+          <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+            {/* Left: Session ID and Topology selector */}
+            <div className="flex items-center gap-3 flex-wrap">
+              {/* Session ID Pill */}
+              <div className="flex items-center gap-2 bg-nexus-950 px-3 py-1.5 rounded-xl border border-nexus-800 text-xs font-mono">
+                <span className="text-nexus-500">Session:</span>
+                <span className="text-accent-cyan font-bold truncate max-w-[140px] sm:max-w-[200px]">
+                  {session?.session_id || 'Initializing...'}
+                </span>
                 <button
-                  onClick={() => refetchHealth()}
-                  className="text-xs font-mono text-nexus-400 hover:text-accent-cyan flex items-center gap-1"
+                  onClick={copySessionId}
+                  className="text-nexus-400 hover:text-white transition-colors"
+                  title="Copy session UUID"
                 >
-                  <RefreshCw className="w-3 h-3" />
-                  <span>Probe</span>
+                  {copiedSessionId ? (
+                    <Check className="w-3.5 h-3.5 text-accent-emerald" />
+                  ) : (
+                    <Copy className="w-3.5 h-3.5" />
+                  )}
                 </button>
               </div>
 
-              <div className="space-y-2 text-xs font-mono">
-                <div className="flex justify-between py-1 border-b border-nexus-850">
-                  <span className="text-nexus-500">Service:</span>
-                  <span className="text-nexus-200">
-                    {healthData?.app_name || 'NEXUS Network Intelligence API'}
-                  </span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-nexus-850">
-                  <span className="text-nexus-500">Version:</span>
-                  <span className="text-nexus-200">{healthData?.version || '1.0.0'}</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-nexus-850">
-                  <span className="text-nexus-500">Engine Status:</span>
-                  <span
-                    className={
-                      status === 'connected'
-                        ? 'text-accent-emerald font-semibold'
-                        : 'text-accent-amber font-semibold'
-                    }
-                  >
-                    {status === 'connected' ? '● Connected' : '○ Offline'}
-                  </span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-nexus-850">
-                  <span className="text-nexus-500">Active Sessions:</span>
-                  <span className="text-nexus-200">
-                    {healthData?.active_sessions ?? 0}
-                  </span>
-                </div>
-                <div className="flex justify-between py-1">
-                  <span className="text-nexus-500">Server Timestamp:</span>
-                  <span className="text-nexus-400 text-[10px]">
-                    {healthData?.timestamp || 'N/A'}
-                  </span>
-                </div>
+              {/* Topology Selector Buttons */}
+              <div className="flex items-center gap-1 bg-nexus-950 p-1 rounded-xl border border-nexus-800 text-xs font-mono">
+                <button
+                  onClick={() => handleSwitchTopology('demo')}
+                  className={`px-3 py-1 rounded-lg transition-colors font-medium ${
+                    session?.topology_type === 'demo'
+                      ? 'bg-nexus-850 text-accent-cyan border border-nexus-700 font-bold shadow-sm'
+                      : 'text-nexus-400 hover:text-nexus-200'
+                  }`}
+                >
+                  Demo (8 Routers)
+                </button>
+                <button
+                  onClick={() => handleSwitchTopology('experiment')}
+                  className={`px-3 py-1 rounded-lg transition-colors font-medium ${
+                    session?.topology_type === 'experiment'
+                      ? 'bg-nexus-850 text-accent-cyan border border-nexus-700 font-bold shadow-sm'
+                      : 'text-nexus-400 hover:text-nexus-200'
+                  }`}
+                >
+                  Experiment (25 Routers)
+                </button>
               </div>
-
-              {status === 'offline' && (
-                <div className="p-3 rounded-lg bg-nexus-950 border border-nexus-800 text-[11px] text-nexus-400 space-y-1.5">
-                  <div className="text-accent-amber font-semibold flex items-center gap-1">
-                    <AlertTriangle className="w-3.5 h-3.5" />
-                    <span>Backend is not responding</span>
-                  </div>
-                  <p>To run the live algorithmic backend locally:</p>
-                  <pre className="p-2 rounded bg-nexus-900 text-nexus-200 font-mono text-[10px] overflow-x-auto">
-                    source .venv/bin/activate
-                    uvicorn api.main:app --port 8000
-                  </pre>
-                </div>
-              )}
             </div>
 
-            {/* Active Session Card (if created) */}
-            {activeSession ? (
-              <div className="rounded-2xl bg-nexus-900 border border-accent-cyan/40 p-6 space-y-4 shadow-xl">
-                <div className="flex items-center justify-between border-b border-nexus-800 pb-3">
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-accent-emerald" />
-                    <h3 className="font-semibold text-sm text-nexus-100">
-                      Active Simulation Session
-                    </h3>
+            {/* Right: Endpoints & Reset */}
+            <div className="flex items-center gap-3 flex-wrap w-full lg:w-auto justify-between lg:justify-end">
+              {/* Endpoints Quick Form */}
+              {session && (
+                <form
+                  onSubmit={handleUpdateEndpoints}
+                  className="flex items-center gap-2 text-xs font-mono bg-nexus-950 p-1.5 rounded-xl border border-nexus-800"
+                >
+                  <span className="text-nexus-500">Endpoints:</span>
+                  <input
+                    type="number"
+                    value={sourceInput}
+                    onChange={(e) => setSourceInput(parseInt(e.target.value) || 0)}
+                    min={0}
+                    max={session.topology_type === 'demo' ? 7 : 24}
+                    className="w-12 px-1.5 py-0.5 rounded bg-nexus-900 border border-nexus-800 text-accent-emerald text-center font-bold focus:outline-none"
+                    title="Source Router ID"
+                  />
+                  <ArrowRight className="w-3 h-3 text-nexus-500" />
+                  <input
+                    type="number"
+                    value={destInput}
+                    onChange={(e) => setDestInput(parseInt(e.target.value) || 0)}
+                    min={0}
+                    max={session.topology_type === 'demo' ? 7 : 24}
+                    className="w-12 px-1.5 py-0.5 rounded bg-nexus-900 border border-nexus-800 text-accent-violet text-center font-bold focus:outline-none"
+                    title="Destination Router ID"
+                  />
+                  <button
+                    type="submit"
+                    disabled={isUpdatingEndpoints}
+                    className="px-2 py-0.5 rounded bg-nexus-850 text-nexus-200 hover:text-accent-cyan transition-colors"
+                  >
+                    {isUpdatingEndpoints ? '...' : 'Set'}
+                  </button>
+                </form>
+              )}
+
+              {/* Reset Network Button */}
+              <button
+                onClick={handleResetNetwork}
+                disabled={isSubmittingEvent}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-mono bg-nexus-950 border border-nexus-800 text-nexus-300 hover:text-white hover:border-nexus-700 transition-all shadow-sm disabled:opacity-50"
+                title="Restore nominal graph state and ACO pheromones"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isSubmittingEvent ? 'animate-spin' : ''}`} />
+                <span>Reset</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Active Route Strip */}
+          {session && (
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pt-2 border-t border-nexus-850 text-xs font-mono">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-nexus-400">Active Transmission Path:</span>
+                {session.current_route.length > 0 ? (
+                  <div className="flex items-center gap-1 bg-nexus-950 px-2.5 py-1 rounded-lg border border-nexus-800 font-bold text-nexus-100">
+                    {session.current_route.map((nodeId, idx) => (
+                      <React.Fragment key={nodeId}>
+                        <span
+                          className={
+                            nodeId === session.source
+                              ? 'text-accent-emerald'
+                              : nodeId === session.destination
+                              ? 'text-accent-violet'
+                              : 'text-accent-cyan'
+                          }
+                        >
+                          R{nodeId}
+                        </span>
+                        {idx < session.current_route.length - 1 && (
+                          <span className="text-nexus-600">→</span>
+                        )}
+                      </React.Fragment>
+                    ))}
                   </div>
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-accent-emerald-subtle text-accent-emerald">
-                    Ready
+                ) : (
+                  <span className="px-2 py-0.5 rounded bg-accent-coral-subtle border border-accent-coral/30 text-accent-coral font-bold flex items-center gap-1">
+                    <ShieldAlert className="w-3.5 h-3.5" />
+                    <span>DESTINATION UNREACHABLE</span>
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center gap-4 text-nexus-400 text-[11px]">
+                <div>
+                  Latency:{' '}
+                  <span className="text-nexus-100 font-bold">
+                    {session.metrics.latency_ms?.toFixed(1) ?? 'N/A'} ms
                   </span>
                 </div>
-
-                <div className="space-y-2 text-xs font-mono">
-                  <div className="flex justify-between">
-                    <span className="text-nexus-500">Session ID:</span>
-                    <span className="text-accent-cyan font-bold truncate max-w-[180px]">
-                      {activeSession.session_id}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-nexus-500">Route:</span>
-                    <span className="text-nexus-100 font-semibold">
-                      {activeSession.current_route.join(' → ')}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-nexus-500">Route Cost:</span>
-                    <span className="text-nexus-200">
-                      {activeSession.current_route_cost?.toFixed(3) ?? 'N/A'}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-nexus-500">Latency:</span>
-                    <span className="text-nexus-200">
-                      {activeSession.metrics.latency_ms?.toFixed(1) ?? 'N/A'} ms
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-nexus-500">Packet Loss:</span>
-                    <span className="text-nexus-200">
-                      {activeSession.metrics.packet_loss_percent !== undefined
-                        ? `${activeSession.metrics.packet_loss_percent}%`
-                        : 'N/A'}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-nexus-500">Congestion:</span>
-                    <span className="text-nexus-200">
-                      {activeSession.metrics.congestion_percent !== undefined
-                        ? `${activeSession.metrics.congestion_percent}%`
-                        : 'N/A'}
-                    </span>
-                  </div>
+                <div>
+                  Loss:{' '}
+                  <span className="text-nexus-100 font-bold">
+                    {session.metrics.packet_loss_percent?.toFixed(1) ?? 'N/A'}%
+                  </span>
+                </div>
+                <div>
+                  Cost:{' '}
+                  <span className="text-accent-violet font-bold">
+                    {session.current_route_cost?.toFixed(3) ?? 'N/A'}
+                  </span>
                 </div>
               </div>
-            ) : (
-              <div className="rounded-2xl bg-nexus-900/40 border border-dashed border-nexus-800 p-8 text-center space-y-2 text-xs text-nexus-500">
-                <Radio className="w-6 h-6 mx-auto text-nexus-600" />
-                <p>No active session loaded.</p>
-                <p className="text-[11px] text-nexus-600">
-                  Configure endpoints and click &quot;Initialize Simulation Session&quot; above.
-                </p>
+            </div>
+          )}
+        </div>
+
+        {/* Global Error Alert */}
+        {sessionError && (
+          <div className="p-4 rounded-xl bg-accent-coral-subtle border border-accent-coral/40 text-accent-coral text-xs flex items-start gap-2.5 font-mono">
+            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+            <div>
+              <strong className="block font-semibold">Engine Communication Error</strong>
+              <span>{sessionError}</span>
+            </div>
+          </div>
+        )}
+
+        {/* MAIN WORKSPACE GRID */}
+        {loadingSession ? (
+          <div className="h-96 rounded-2xl bg-nexus-900/60 border border-nexus-800 flex flex-col items-center justify-center space-y-3">
+            <div className="w-8 h-8 rounded-full border-2 border-accent-cyan border-t-transparent animate-spin" />
+            <p className="font-mono text-xs text-nexus-400">
+              Initializing isolated session with FastAPI backend...
+            </p>
+          </div>
+        ) : session && session.topology ? (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            {/* Left 7 Columns: Interactive Topology Graph */}
+            <div className="lg:col-span-7 space-y-3">
+              <NetworkGraph
+                topology={session.topology}
+                currentRoute={session.current_route}
+                source={session.source}
+                destination={session.destination}
+                selectedNode={selectedNode}
+                selectedEdge={selectedEdge}
+                onSelectNode={(id) => {
+                  setSelectedNode(id);
+                  setSelectedEdge(null);
+                  setSideTab('inspector');
+                }}
+                onSelectEdge={(edge) => {
+                  setSelectedEdge(edge);
+                  setSelectedNode(null);
+                  setSideTab('inspector');
+                }}
+              />
+
+              <div className="flex items-center justify-between text-[11px] font-mono text-nexus-500 px-1">
+                <span>
+                  Tip: Click routers or links to inspect telemetry or apply targeted chaos.
+                </span>
+                <span>
+                  Nodes: {session.topology.num_nodes} | Links: {session.topology.num_edges}
+                </span>
               </div>
-            )}
+            </div>
+
+            {/* Right 5 Columns: Side Panel (Inspector & Event Controls) */}
+            <div className="lg:col-span-5 space-y-4">
+              {/* Tab Switcher */}
+              <div className="flex items-center justify-between bg-nexus-900 border border-nexus-800 p-1 rounded-xl text-xs font-mono">
+                <button
+                  onClick={() => setSideTab('inspector')}
+                  className={`flex-1 py-1.5 rounded-lg text-center transition-all ${
+                    sideTab === 'inspector'
+                      ? 'bg-nexus-850 text-accent-cyan font-bold shadow-sm'
+                      : 'text-nexus-400 hover:text-nexus-200'
+                  }`}
+                >
+                  Telemetry & Inspector
+                </button>
+                <button
+                  onClick={() => setSideTab('controls')}
+                  className={`flex-1 py-1.5 rounded-lg text-center transition-all ${
+                    sideTab === 'controls'
+                      ? 'bg-nexus-850 text-accent-cyan font-bold shadow-sm'
+                      : 'text-nexus-400 hover:text-nexus-200'
+                  }`}
+                >
+                  Event & Chaos Controls
+                </button>
+              </div>
+
+              {/* Inspector Tab */}
+              {sideTab === 'inspector' && (
+                <InspectorPanel
+                  session={session}
+                  selectedNode={selectedNode}
+                  selectedEdge={selectedEdge}
+                  onClearSelection={() => {
+                    setSelectedNode(null);
+                    setSelectedEdge(null);
+                  }}
+                />
+              )}
+
+              {/* Event Controls Tab */}
+              {sideTab === 'controls' && (
+                <EventControls
+                  session={session}
+                  selectedNode={selectedNode}
+                  selectedEdge={selectedEdge}
+                  onApplyEvent={handleApplyEvent}
+                  onResetNetwork={handleResetNetwork}
+                  isSubmitting={isSubmittingEvent}
+                />
+              )}
+            </div>
+          </div>
+        ) : null}
+
+        {/* BOTTOM PANELS: DECISION PLAYBACK & EVENT HISTORY */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          {/* Decision Playback (6 cols) */}
+          <div className="lg:col-span-6">
+            <DecisionPanel
+              lastEvent={lastEvent}
+              isSubmitting={isSubmittingEvent}
+            />
+          </div>
+
+          {/* Chronological Event History (6 cols) */}
+          <div className="lg:col-span-6">
+            <EventHistory
+              events={eventHistory}
+              onSelectEvent={(ev) => {
+                setLastEvent(ev);
+                const idx = eventHistory.indexOf(ev);
+                setSelectedHistoryIndex(idx >= 0 ? idx : null);
+              }}
+              selectedEventIndex={selectedHistoryIndex}
+            />
           </div>
         </div>
       </div>

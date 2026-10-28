@@ -380,6 +380,53 @@ To build the production bundle:
 npm run build
 ```
 
+## Interactive Network Laboratory & Adaptive Routing Visualization (Phase 7)
+
+An interactive simulation workspace integrated into `/lab` powered by `@xyflow/react` and connected to the stateful FastAPI backend.
+
+```text
+React Flow Canvas (Interactive Topology) ◄──► Inspector & Chaos Controls ◄──► Adaptive Decision Playback
+       ▲                                             ▲                                   ▲
+       └─────────────────── FastAPI Session Engine (/api/sessions) ──────────────────────┘
+```
+
+### Key Capabilities
+
+1. **Interactive Topology Visualization (`@xyflow/react`)**:
+   - **Custom Router Nodes (`RouterNode`)**: Status halos (Emerald for source, Violet for destination, Cyan for active route, Coral for disabled/crashed routers with 'CUT' badge). Displays router ID, role, incident link count, and interactive selection.
+   - **Custom Link Edges (`NetworkEdge`)**: Canonical undirected links with glowing route overlays, steel slate alternative paths, amber/coral congestion indicators, and red dashed line for cut links. Interactive click opens link telemetry.
+   - **Stable Deterministic Coordinates**: Fixed canvas positions for 8-node demo mesh and structured multi-hop layers for 25-node experiment mesh.
+   - **Canvas Controls**: Full zoom, pan, fit-to-view, interactive MiniMap, and visual legend overlay.
+2. **Session Lifecycle & Isolation**:
+   - Checks backend health on entry and restores or provisions an isolated stateful simulation session (`sessionStorage`).
+   - Resilient against browser refreshes; gracefully recovers session state or provisions a fresh session.
+   - Dynamic topology switching (Demo 8-node vs Experiment 25-node) and endpoint reconfiguration.
+3. **Targeted Chaos & Event Controls**:
+   - **Queue Congestion Surge**: Configurable +10% to +80% traffic queue buildup on selected links.
+   - **Latency Spike**: Multiplier slider (1.5x to 5.0x) simulating fiber delay or throttling.
+   - **Packet Loss Surge**: +1% to +25% drop rate injection.
+   - **Link Cut / Restoration**: Fiber severing with safety confirmation dialog and instant topological recovery.
+   - **Router Crash / Reboot**: Router shutdown cutting all incident links; immediate unreachability detection if source or destination is isolated.
+   - **Compound Scenario**: Multi-vector stress evaluating swarm agility under combined faults.
+   - **Network Reset**: One-click restoration back to baseline nominal graph conditions.
+4. **Adaptive Explainability & Decision Playback**:
+   - Natural language diagnostic breakdown explaining whether the event was tolerated (below threshold) or triggered autonomous rerouting.
+   - Quantitative before/after metrics grid (latency, loss, bandwidth, fuzzy cost deltas).
+   - Real-time engine timings: Processing Time ($t_{\text{proc}}$) and Rerouting Time ($t_{\text{reroute}}$).
+   - Clear unreachability state detection with route highlight clearing when network partitions occur.
+5. **Session Audit History**:
+   - Chronological table logging every applied event, trigger reason, route transition, latency delta, and recovery time.
+   - Clickable row inspection to reload and review past decisions.
+
+### Running Frontend Tests
+
+```bash
+cd frontend
+npm test
+```
+
+Executes 13 automated unit and component tests with Vitest and React Testing Library covering session persistence, topology rendering, node/edge selection, event payloads, decision playback, and error states.
+
 ## Running Tests and Experiments
 
 Activate the Python virtual environment:
