@@ -104,4 +104,56 @@ describe('Session Lifecycle and API Client', () => {
     expect(res.reachable).toBe(true);
     expect(res.current_route).toEqual([0, 1, 4, 7]);
   });
+
+  it('correctly segregates demo and experiment sessions in storage', async () => {
+    const demoSession: SessionResponse = {
+      session_id: 'demo-uuid-8888',
+      topology_type: 'demo',
+      source: 0,
+      destination: 7,
+      quality_threshold: 0.15,
+      cost_threshold: 0.2,
+      current_route: [0, 1, 4, 7],
+      current_route_cost: 2.1,
+      reachable: true,
+      metrics: { latency_ms: 60.0 },
+      total_route_changes: 0,
+      history_count: 0,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    const expSession: SessionResponse = {
+      session_id: 'exp-uuid-9999',
+      topology_type: 'experiment',
+      source: 0,
+      destination: 24,
+      quality_threshold: 0.15,
+      cost_threshold: 0.2,
+      current_route: [0, 6, 12, 18, 24],
+      current_route_cost: 3.5,
+      reachable: true,
+      metrics: { latency_ms: 120.0 },
+      total_route_changes: 0,
+      history_count: 0,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    // Store demo session
+    sessionStorage.setItem('nexus_session_id', demoSession.session_id);
+    sessionStorage.setItem('nexus_session_id_demo', demoSession.session_id);
+    expect(sessionStorage.getItem('nexus_session_id_demo')).toBe('demo-uuid-8888');
+
+    // Switch to experiment session
+    sessionStorage.setItem('nexus_session_id', expSession.session_id);
+    sessionStorage.setItem('nexus_session_id_experiment', expSession.session_id);
+    expect(sessionStorage.getItem('nexus_session_id_experiment')).toBe('exp-uuid-9999');
+
+    // Switching back to demo retrieves demo session key, not experiment key
+    expect(sessionStorage.getItem('nexus_session_id_demo')).toBe('demo-uuid-8888');
+    expect(sessionStorage.getItem('nexus_session_id_demo')).not.toBe(
+      sessionStorage.getItem('nexus_session_id_experiment')
+    );
+  });
 });

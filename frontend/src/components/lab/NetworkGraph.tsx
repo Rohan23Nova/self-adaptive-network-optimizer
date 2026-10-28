@@ -122,6 +122,7 @@ export const NetworkGraph: React.FC<NetworkGraphProps> = ({
   return (
     <div className="relative w-full h-[520px] rounded-2xl bg-nexus-950 border border-nexus-800 overflow-hidden shadow-inner">
       <ReactFlow
+        key={`${topology.topology_type}-${topology.num_nodes}`}
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}

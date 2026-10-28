@@ -71,6 +71,34 @@ export const EventControls: React.FC<EventControlsProps> = ({
     }
   }, [selectedNode]);
 
+  // Keep targetEdge and targetNode valid when session topology changes
+  React.useEffect(() => {
+    if (session.topology?.edges && session.topology.edges.length > 0) {
+      const edgeExists = session.topology.edges.some((e) => {
+        const u = Math.min(e.source, e.target);
+        const v = Math.max(e.source, e.target);
+        return `${u}-${v}` === targetEdge;
+      });
+      if (!edgeExists) {
+        const first = session.topology.edges[0];
+        const u = Math.min(first.source, first.target);
+        const v = Math.max(first.source, first.target);
+        setTargetEdge(`${u}-${v}`);
+      }
+    }
+
+    if (session.topology?.nodes && session.topology.nodes.length > 0) {
+      const nodeExists = session.topology.nodes.some((n) => n.id === targetNode);
+      if (!nodeExists) {
+        // Default to first intermediate node or source
+        const intermediate = session.topology.nodes.find(
+          (n) => n.id !== session.source && n.id !== session.destination
+        );
+        setTargetNode(intermediate ? intermediate.id : session.topology.nodes[0].id);
+      }
+    }
+  }, [session.session_id, session.topology_type, session.topology, targetEdge, targetNode, session.source, session.destination]);
+
   const parseEdgeString = (str: string): [number, number] => {
     const parts = str.split('-').map(Number);
     return [parts[0], parts[1]];

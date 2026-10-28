@@ -52,53 +52,69 @@ export const LabPage: React.FC = () => {
   const initStartedRef = useRef<boolean>(false);
 
   // Initialize or restore session
-  const initializeSession = useCallback(async (topologyType: 'demo' | 'experiment' = 'demo') => {
-    setLoadingSession(true);
-    setSessionError(null);
+  const initializeSession = useCallback(
+    async (topologyType: 'demo' | 'experiment' = 'demo', forceFresh: boolean = false) => {
+      setLoadingSession(true);
+      setSessionError(null);
 
-    try {
-      const savedId = sessionStorage.getItem('nexus_session_id');
+      try {
+        // Look up saved session specific to this topology type
+        const savedId = !forceFresh
+          ? sessionStorage.getItem(`nexus_session_id_${topologyType}`)
+          : null;
 
-      if (savedId && topologyType === 'demo') {
-        try {
-          const existing = await api.getSession(savedId);
-          setSession(existing);
-          setSourceInput(existing.source);
-          setDestInput(existing.destination);
-          setLoadingSession(false);
-          return;
-        } catch {
-          // If session expired or 404, fall through and create fresh session
-          sessionStorage.removeItem('nexus_session_id');
+        if (savedId) {
+          try {
+            const existing = await api.getSession(savedId);
+            // CRITICAL: Only restore if the fetched session topology strictly matches requested topologyType!
+            if (existing.topology_type === topologyType) {
+              setSession(existing);
+              setSourceInput(existing.source);
+              setDestInput(existing.destination);
+              sessionStorage.setItem('nexus_session_id', existing.session_id);
+              sessionStorage.setItem(`nexus_session_id_${topologyType}`, existing.session_id);
+              sessionStorage.setItem('nexus_lab_topology_type', topologyType);
+              setLoadingSession(false);
+              return;
+            }
+          } catch {
+            // If session expired or 404, remove stale key and fall through to create fresh session
+            sessionStorage.removeItem(`nexus_session_id_${topologyType}`);
+          }
         }
+
+        // Create fresh session for this topology type
+        const req: CreateSessionRequest = {
+          topology_type: topologyType,
+          source: 0,
+          destination: topologyType === 'demo' ? 7 : 24,
+          quality_threshold: 0.15,
+          cost_threshold: 0.20,
+          seed: 42,
+        };
+
+        const newSession = await api.createSession(req);
+        setSession(newSession);
+        setSourceInput(newSession.source);
+        setDestInput(newSession.destination);
+        sessionStorage.setItem('nexus_session_id', newSession.session_id);
+        sessionStorage.setItem(`nexus_session_id_${topologyType}`, newSession.session_id);
+        sessionStorage.setItem('nexus_lab_topology_type', topologyType);
+      } catch (err: any) {
+        setSessionError(err?.message || 'Failed to initialize simulation session.');
+      } finally {
+        setLoadingSession(false);
       }
-
-      // Create fresh session
-      const req: CreateSessionRequest = {
-        topology_type: topologyType,
-        source: topologyType === 'demo' ? 0 : 0,
-        destination: topologyType === 'demo' ? 7 : 24,
-        quality_threshold: 0.15,
-        cost_threshold: 0.20,
-        seed: 42,
-      };
-
-      const newSession = await api.createSession(req);
-      setSession(newSession);
-      setSourceInput(newSession.source);
-      setDestInput(newSession.destination);
-      sessionStorage.setItem('nexus_session_id', newSession.session_id);
-    } catch (err: any) {
-      setSessionError(err?.message || 'Failed to initialize simulation session.');
-    } finally {
-      setLoadingSession(false);
-    }
-  }, []);
+    },
+    []
+  );
 
   useEffect(() => {
     if (!initStartedRef.current) {
       initStartedRef.current = true;
-      initializeSession('demo');
+      const savedType =
+        (sessionStorage.getItem('nexus_lab_topology_type') as 'demo' | 'experiment') || 'demo';
+      initializeSession(savedType);
     }
   }, [initializeSession]);
 
