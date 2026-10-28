@@ -1,402 +1,532 @@
 import React, { useState, useEffect } from 'react';
 import { AppShell } from '../components/AppShell';
 import { api } from '../api/client';
-import type { ExperimentSummaryRow } from '../api/types';
+import type {
+  ExperimentSummaryRow,
+  ConvergencePoint,
+} from '../api/types';
 import {
   Database,
-  Filter,
-  Sparkles,
   RefreshCw,
+  BarChart3,
+  GitBranch,
+  TrendingDown,
+  Layers,
+  BookOpen,
+  RotateCcw,
 } from 'lucide-react';
+import { ScenarioMetricChart } from '../components/research/ScenarioMetricChart';
+import { TimelineChart } from '../components/research/TimelineChart';
+import { ConvergenceChart } from '../components/research/ConvergenceChart';
+import { RouteComparisonTable } from '../components/research/RouteComparisonTable';
+import { MethodologyPanel } from '../components/research/MethodologyPanel';
+import { DataTable } from '../components/research/DataTable';
+
+type ResearchViewTab =
+  | 'metrics'
+  | 'timeline'
+  | 'convergence'
+  | 'routes'
+  | 'data'
+  | 'methodology';
 
 export const ResearchPage: React.FC = () => {
+  const [activeTab, setActiveTab] = useState<ResearchViewTab>('metrics');
   const [summaryRows, setSummaryRows] = useState<ExperimentSummaryRow[]>([]);
+  const [timelineRows, setTimelineRows] = useState<Record<string, any>[]>([]);
+  const [convergenceRows, setConvergenceRows] = useState<ConvergencePoint[]>([]);
+  const [detailedResults, setDetailedResults] = useState<Record<string, any>[]>([]);
+  const [totalDetailed, setTotalDetailed] = useState<number>(0);
   const [metadata, setMetadata] = useState<Record<string, any> | null>(null);
+
   const [loading, setLoading] = useState<boolean>(true);
-  const [selectedScenario, setSelectedScenario] = useState<string>('all');
   const [isDemoData, setIsDemoData] = useState<boolean>(false);
 
-  useEffect(() => {
-    let isMounted = true;
+  // Top Filter State
+  const [selectedScenario, setSelectedScenario] = useState<string>('all');
+  const [selectedStrategy, setSelectedStrategy] = useState<string>('all');
+
+  const fetchAllData = () => {
     setLoading(true);
 
-    api
-      .getExperimentSummary()
-      .then((res) => {
-        if (isMounted) {
-          if (res.summary && res.summary.length > 0) {
-            setSummaryRows(res.summary);
-            setMetadata(res.metadata || null);
-            setIsDemoData(false);
-          } else {
-            loadVerifiedFallback();
-          }
-          setLoading(false);
+    Promise.allSettled([
+      api.getExperimentSummary(),
+      api.getTimeline(),
+      api.getConvergence(),
+      api.getExperimentResults(undefined, undefined, 200, 0),
+    ])
+      .then(([summaryRes, timelineRes, convRes, resultsRes]) => {
+        let hasRealData = false;
+
+        if (summaryRes.status === 'fulfilled' && summaryRes.value.summary?.length > 0) {
+          setSummaryRows(summaryRes.value.summary);
+          setMetadata(summaryRes.value.metadata || null);
+          hasRealData = true;
         }
+
+        if (timelineRes.status === 'fulfilled' && timelineRes.value.timeline?.length > 0) {
+          setTimelineRows(timelineRes.value.timeline);
+        }
+
+        if (convRes.status === 'fulfilled' && convRes.value.convergence?.length > 0) {
+          setConvergenceRows(convRes.value.convergence);
+        }
+
+        if (resultsRes.status === 'fulfilled' && resultsRes.value.results?.length > 0) {
+          setDetailedResults(resultsRes.value.results);
+          setTotalDetailed(resultsRes.value.total);
+        }
+
+        if (hasRealData) {
+          setIsDemoData(false);
+        } else {
+          loadVerifiedFallback();
+        }
+        setLoading(false);
       })
       .catch(() => {
-        if (isMounted) {
-          loadVerifiedFallback();
-          setLoading(false);
-        }
+        loadVerifiedFallback();
+        setLoading(false);
       });
+  };
 
-    return () => {
-      isMounted = false;
-    };
+  useEffect(() => {
+    fetchAllData();
   }, []);
 
   const loadVerifiedFallback = () => {
     setIsDemoData(true);
     setMetadata({
-      num_runs: 10,
-      scenarios: [
-        'baseline_normal',
-        'heavy_congestion',
-        'latency_spike',
-        'high_packet_loss',
-        'link_failure',
-        'combined_stress',
-      ],
-      topology: '8-node demo mesh',
-      total_trials: 240,
+      timestamp: '2026-10-26T22:01:43.654997',
+      graph_topology: {
+        num_nodes: 25,
+        source: 0,
+        destination: 24,
+        base_seed: 42,
+      },
+      experiments: {
+        aco_runs: 20,
+        strategies: [
+          'dijkstra_latency',
+          'dijkstra_fuzzy',
+          'aco_fuzzy',
+          'adaptive_aco',
+        ],
+        scenarios: [
+          'normal',
+          'congestion',
+          'high_latency',
+          'packet_loss',
+          'link_failure',
+          'dynamic_combined',
+        ],
+      },
+      aco_parameters: {
+        alpha: 1.0,
+        beta: 2.0,
+        evaporation_rate: 0.5,
+        num_ants: 20,
+        num_iterations: 50,
+      },
+      adaptive_parameters: {
+        quality_change_threshold: 0.1,
+        route_cost_degradation_threshold: 0.2,
+      },
+      total_runtime_seconds: 3.174,
     });
 
+    // Fallback summary rows matching results/summary_results.csv
     setSummaryRows([
       {
-        scenario: 'baseline_normal',
+        scenario: 'normal',
         strategy: 'dijkstra_latency',
-        strategy_label: 'Dijkstra Latency',
-        mean_latency: 52.4,
-        mean_packet_loss: 0.012,
-        mean_bandwidth: 84.1,
-        mean_hops: 2.8,
-        pdr: 98.8,
-        reroute_events: 0,
+        runs: 1,
+        latency_ms_mean: 53.89,
+        packet_loss_percent_mean: 10.02,
+        bandwidth_mbps_mean: 41.22,
+        congestion_percent_mean: 48.02,
+        route_hops_mean: 4.0,
+        reachable_rate: 1.0,
+        runtime_ms_mean: 0.61,
+        route_cost_mean: 53.89,
       },
       {
-        scenario: 'baseline_normal',
-        strategy: 'adaptive_aco',
-        strategy_label: 'Adaptive ACO (NEXUS)',
-        mean_latency: 53.1,
-        mean_packet_loss: 0.011,
-        mean_bandwidth: 83.9,
-        mean_hops: 2.8,
-        pdr: 98.9,
-        reroute_events: 0,
-      },
-      {
-        scenario: 'heavy_congestion',
-        strategy: 'dijkstra_latency',
-        strategy_label: 'Dijkstra Latency',
-        mean_latency: 98.7,
-        mean_packet_loss: 0.142,
-        mean_bandwidth: 41.2,
-        mean_hops: 2.8,
-        pdr: 85.8,
-        reroute_events: 0,
-      },
-      {
-        scenario: 'heavy_congestion',
+        scenario: 'normal',
         strategy: 'dijkstra_fuzzy',
-        strategy_label: 'Dijkstra Fuzzy',
-        mean_latency: 71.5,
-        mean_packet_loss: 0.048,
-        mean_bandwidth: 68.3,
-        mean_hops: 3.2,
-        pdr: 95.2,
-        reroute_events: 0,
+        runs: 1,
+        latency_ms_mean: 115.29,
+        packet_loss_percent_mean: 1.68,
+        bandwidth_mbps_mean: 27.42,
+        congestion_percent_mean: 10.32,
+        route_hops_mean: 1.0,
+        reachable_rate: 1.0,
+        runtime_ms_mean: 8.09,
+        route_cost_mean: 2.00,
       },
       {
-        scenario: 'heavy_congestion',
+        scenario: 'normal',
         strategy: 'adaptive_aco',
-        strategy_label: 'Adaptive ACO (NEXUS)',
-        mean_latency: 61.2,
-        mean_packet_loss: 0.018,
-        mean_bandwidth: 74.5,
-        mean_hops: 3.0,
-        pdr: 98.2,
-        reroute_events: 9,
+        runs: 1,
+        latency_ms_mean: 115.29,
+        packet_loss_percent_mean: 1.68,
+        bandwidth_mbps_mean: 27.42,
+        congestion_percent_mean: 10.32,
+        route_hops_mean: 1.0,
+        reachable_rate: 1.0,
+        runtime_ms_mean: 0.0,
+        route_cost_mean: 2.00,
       },
       {
-        scenario: 'link_failure',
+        scenario: 'normal',
+        strategy: 'aco_fuzzy',
+        runs: 20,
+        latency_ms_mean: 115.29,
+        latency_ms_std: 0.0,
+        latency_ms_ci95_lower: 115.29,
+        latency_ms_ci95_upper: 115.29,
+        packet_loss_percent_mean: 1.68,
+        bandwidth_mbps_mean: 27.42,
+        congestion_percent_mean: 10.32,
+        route_hops_mean: 1.0,
+        reachable_rate: 1.0,
+        runtime_ms_mean: 17.02,
+        runtime_ms_std: 0.34,
+        runtime_ms_ci95_lower: 16.86,
+        runtime_ms_ci95_upper: 17.18,
+        route_cost_mean: 2.00,
+      },
+      {
+        scenario: 'congestion',
         strategy: 'dijkstra_latency',
-        strategy_label: 'Dijkstra Latency',
-        mean_latency: 142.0,
-        mean_packet_loss: 0.285,
-        mean_bandwidth: 22.0,
-        mean_hops: 2.1,
-        pdr: 71.5,
-        reroute_events: 0,
+        runs: 1,
+        latency_ms_mean: 53.89,
+        packet_loss_percent_mean: 10.02,
+        bandwidth_mbps_mean: 41.22,
+        congestion_percent_mean: 48.02,
+        route_hops_mean: 4.0,
+        reachable_rate: 1.0,
+        runtime_ms_mean: 0.26,
+        route_cost_mean: 53.89,
       },
       {
-        scenario: 'link_failure',
+        scenario: 'congestion',
         strategy: 'adaptive_aco',
-        strategy_label: 'Adaptive ACO (NEXUS)',
-        mean_latency: 66.8,
-        mean_packet_loss: 0.021,
-        mean_bandwidth: 71.8,
-        mean_hops: 3.4,
-        pdr: 97.9,
-        reroute_events: 10,
+        runs: 1,
+        latency_ms_mean: 115.29,
+        packet_loss_percent_mean: 1.68,
+        bandwidth_mbps_mean: 27.42,
+        congestion_percent_mean: 45.32,
+        route_hops_mean: 1.0,
+        reachable_rate: 1.0,
+        runtime_ms_mean: 0.0,
+        route_cost_mean: 2.00,
       },
       {
-        scenario: 'combined_stress',
+        scenario: 'congestion',
+        strategy: 'aco_fuzzy',
+        runs: 20,
+        latency_ms_mean: 115.29,
+        packet_loss_percent_mean: 1.68,
+        bandwidth_mbps_mean: 27.42,
+        congestion_percent_mean: 45.32,
+        route_hops_mean: 1.0,
+        reachable_rate: 1.0,
+        runtime_ms_mean: 17.30,
+        runtime_ms_std: 0.35,
+        runtime_ms_ci95_lower: 17.14,
+        runtime_ms_ci95_upper: 17.46,
+        route_cost_mean: 2.00,
+      },
+      {
+        scenario: 'high_latency',
         strategy: 'dijkstra_latency',
-        strategy_label: 'Dijkstra Latency',
-        mean_latency: 168.4,
-        mean_packet_loss: 0.341,
-        mean_bandwidth: 18.5,
-        mean_hops: 2.2,
-        pdr: 65.9,
-        reroute_events: 0,
+        runs: 1,
+        latency_ms_mean: 53.89,
+        packet_loss_percent_mean: 10.02,
+        bandwidth_mbps_mean: 41.22,
+        congestion_percent_mean: 48.02,
+        route_hops_mean: 4.0,
+        reachable_rate: 1.0,
+        runtime_ms_mean: 0.24,
+        route_cost_mean: 53.89,
       },
       {
-        scenario: 'combined_stress',
+        scenario: 'high_latency',
         strategy: 'adaptive_aco',
-        strategy_label: 'Adaptive ACO (NEXUS)',
-        mean_latency: 74.2,
-        mean_packet_loss: 0.024,
-        mean_bandwidth: 69.4,
-        mean_hops: 3.5,
-        pdr: 97.6,
-        reroute_events: 10,
+        runs: 1,
+        latency_ms_mean: 114.63,
+        packet_loss_percent_mean: 4.48,
+        bandwidth_mbps_mean: 68.93,
+        congestion_percent_mean: 47.13,
+        route_hops_mean: 2.0,
+        reachable_rate: 1.0,
+        runtime_ms_mean: 19.75,
+        route_cost_mean: 3.22,
+      },
+      {
+        scenario: 'high_latency',
+        strategy: 'aco_fuzzy',
+        runs: 20,
+        latency_ms_mean: 114.63,
+        packet_loss_percent_mean: 4.48,
+        bandwidth_mbps_mean: 68.93,
+        congestion_percent_mean: 47.13,
+        route_hops_mean: 2.0,
+        reachable_rate: 1.0,
+        runtime_ms_mean: 21.13,
+        runtime_ms_std: 0.45,
+        runtime_ms_ci95_lower: 20.92,
+        runtime_ms_ci95_upper: 21.34,
+        route_cost_mean: 3.22,
       },
     ]);
   };
 
-  const scenarios = [
-    { id: 'all', label: 'All Scenarios' },
-    { id: 'baseline_normal', label: 'Baseline Normal' },
-    { id: 'heavy_congestion', label: 'Heavy Congestion' },
-    { id: 'link_failure', label: 'Link Failure' },
-    { id: 'combined_stress', label: 'Combined Stress' },
-  ];
-
-  const filteredRows =
-    selectedScenario === 'all'
-      ? summaryRows
-      : summaryRows.filter((r) => r.scenario === selectedScenario);
+  const resetFilters = () => {
+    setSelectedScenario('all');
+    setSelectedStrategy('all');
+  };
 
   return (
-    <AppShell
-      title="Experimental Research & Analytics"
-      subtitle="Empirical benchmark evaluation of soft-computing routing algorithms under 6 chaos scenarios."
-    >
-      <div className="space-y-10">
-        {/* Top Metric Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="rounded-xl bg-nexus-900 border border-nexus-800 p-4 space-y-1">
-            <span className="text-[11px] font-mono text-nexus-500 uppercase tracking-wider">
-              Simulated Trials
-            </span>
-            <div className="text-2xl font-bold text-nexus-100 font-mono">
-              {metadata?.total_trials || 240}
+    <AppShell>
+      <div className="space-y-8 pb-12">
+        {/* Top Header */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-nexus-800 pb-6">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="p-2 rounded-xl bg-violet-500/10 border border-violet-500/20 text-violet-400">
+                <Database className="w-5 h-5" />
+              </span>
+              <h1 className="text-2xl font-bold text-nexus-100 tracking-tight">
+                NEXUS Research Studio
+              </h1>
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-mono bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                Phase 3 Verified Dataset
+              </span>
+              {isDemoData && (
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-mono bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                  Local Cache
+                </span>
+              )}
             </div>
-            <p className="text-[11px] text-nexus-400">
-              {metadata?.scenarios?.length || 6} scenarios × 4 strategies
+            <p className="text-xs text-nexus-400 mt-1 max-w-2xl leading-relaxed">
+              Empirical multi-attribute routing benchmark results across 6 failure scenarios, 20 stochastic seeds, and sequential 10-step adaptive recovery trajectories.
             </p>
           </div>
 
-          <div className="rounded-xl bg-nexus-900 border border-nexus-800 p-4 space-y-1">
-            <span className="text-[11px] font-mono text-nexus-500 uppercase tracking-wider">
-              Peak Delivery Ratio
-            </span>
-            <div className="text-2xl font-bold text-accent-emerald font-mono">
-              98.1%
-            </div>
-            <p className="text-[11px] text-nexus-400">
-              Adaptive ACO under combined stress
-            </p>
-          </div>
-
-          <div className="rounded-xl bg-nexus-900 border border-nexus-800 p-4 space-y-1">
-            <span className="text-[11px] font-mono text-nexus-500 uppercase tracking-wider">
-              Latency Improvement
-            </span>
-            <div className="text-2xl font-bold text-accent-cyan font-mono">
-              -56.0%
-            </div>
-            <p className="text-[11px] text-nexus-400">
-              vs. single-metric Dijkstra in chaos
-            </p>
-          </div>
-
-          <div className="rounded-xl bg-nexus-900 border border-nexus-800 p-4 space-y-1">
-            <span className="text-[11px] font-mono text-nexus-500 uppercase tracking-wider">
-              Recovery Time
-            </span>
-            <div className="text-2xl font-bold text-accent-violet font-mono">
-              &lt;45 ms
-            </div>
-            <p className="text-[11px] text-nexus-400">
-              Average autonomous reroute trigger
-            </p>
-          </div>
-        </div>
-
-        {/* Dataset Origin Strip */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3.5 rounded-xl bg-nexus-900 border border-nexus-800 text-xs">
-          <div className="flex items-center gap-2">
-            <Database className="w-4 h-4 text-accent-cyan" />
-            <span className="text-nexus-300 font-mono">
-              Dataset Source:{' '}
-              <strong className="text-nexus-100">
-                {isDemoData
-                  ? 'Phase 3 Empirical Artifacts (Embedded Preview)'
-                  : 'FastAPI /api/experiments/summary (Live)'}
-              </strong>
-            </span>
-            {loading && (
-              <RefreshCw className="w-3.5 h-3.5 text-accent-cyan animate-spin ml-2" />
-            )}
-          </div>
-          {isDemoData && (
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-accent-cyan-subtle text-accent-cyan border border-accent-cyan/20">
-              Offline Demonstration Preview
-            </span>
-          )}
-        </div>
-
-        {/* Filter Bar */}
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-mono text-nexus-400 flex items-center gap-1 mr-2">
-            <Filter className="w-3.5 h-3.5 text-nexus-500" />
-            <span>Scenario Filter:</span>
-          </span>
-          {scenarios.map((sc) => (
+          <div className="flex items-center gap-2 shrink-0">
             <button
-              key={sc.id}
-              onClick={() => setSelectedScenario(sc.id)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-mono transition-all ${
-                selectedScenario === sc.id
-                  ? 'bg-accent-cyan text-nexus-950 font-semibold shadow-sm'
-                  : 'bg-nexus-900 border border-nexus-800 text-nexus-400 hover:text-nexus-200'
-              }`}
+              onClick={fetchAllData}
+              disabled={loading}
+              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-nexus-900 border border-nexus-800 hover:border-nexus-700 text-xs font-mono text-nexus-300 hover:text-nexus-100 transition-all shadow-sm disabled:opacity-50"
             >
-              {sc.label}
+              <RefreshCw
+                className={`w-3.5 h-3.5 text-cyan-400 ${loading ? 'animate-spin' : ''}`}
+              />
+              Reload Results
             </button>
-          ))}
+          </div>
         </div>
 
-        {/* Summary Table */}
-        <div className="overflow-x-auto rounded-xl border border-nexus-800 bg-nexus-900/70">
-          <table className="w-full text-left text-xs font-mono">
-            <thead className="bg-nexus-950/80 text-nexus-400 text-[11px] uppercase border-b border-nexus-800">
-              <tr>
-                <th className="py-3.5 px-4 font-semibold">Scenario</th>
-                <th className="py-3.5 px-4 font-semibold">Strategy</th>
-                <th className="py-3.5 px-4 font-semibold">Mean Latency</th>
-                <th className="py-3.5 px-4 font-semibold">Packet Loss</th>
-                <th className="py-3.5 px-4 font-semibold">Bandwidth</th>
-                <th className="py-3.5 px-4 font-semibold">Hops</th>
-                <th className="py-3.5 px-4 font-semibold">PDR (%)</th>
-                <th className="py-3.5 px-4 font-semibold">Reroutes</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-nexus-850">
-              {filteredRows.map((row, idx) => (
-                <tr
-                  key={idx}
-                  className={`hover:bg-nexus-850/40 transition-colors ${
-                    row.strategy === 'adaptive_aco'
-                      ? 'bg-accent-cyan-subtle/30 text-nexus-100 font-medium'
-                      : 'text-nexus-300'
-                  }`}
+        {/* Global Filter & View Strip */}
+        <div className="rounded-2xl bg-nexus-900 border border-nexus-800 p-4 space-y-4 shadow-sm">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            {/* View Tab Switcher */}
+            <div className="flex items-center gap-1.5 bg-nexus-950 p-1.5 rounded-xl border border-nexus-800 overflow-x-auto">
+              <button
+                onClick={() => setActiveTab('metrics')}
+                className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-mono transition-all shrink-0 ${
+                  activeTab === 'metrics'
+                    ? 'bg-nexus-800 text-cyan-300 border border-cyan-500/30 shadow-sm font-bold'
+                    : 'text-nexus-400 hover:text-nexus-200 hover:bg-nexus-900/60'
+                }`}
+              >
+                <BarChart3 className="w-3.5 h-3.5 text-cyan-400" />
+                Scenario Metrics
+              </button>
+              <button
+                onClick={() => setActiveTab('timeline')}
+                className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-mono transition-all shrink-0 ${
+                  activeTab === 'timeline'
+                    ? 'bg-nexus-800 text-violet-300 border border-violet-500/30 shadow-sm font-bold'
+                    : 'text-nexus-400 hover:text-nexus-200 hover:bg-nexus-900/60'
+                }`}
+              >
+                <Layers className="w-3.5 h-3.5 text-violet-400" />
+                Dynamic Timeline (10-Step)
+              </button>
+              <button
+                onClick={() => setActiveTab('convergence')}
+                className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-mono transition-all shrink-0 ${
+                  activeTab === 'convergence'
+                    ? 'bg-nexus-800 text-emerald-300 border border-emerald-500/30 shadow-sm font-bold'
+                    : 'text-nexus-400 hover:text-nexus-200 hover:bg-nexus-900/60'
+                }`}
+              >
+                <TrendingDown className="w-3.5 h-3.5 text-emerald-400" />
+                ACO Convergence
+              </button>
+              <button
+                onClick={() => setActiveTab('routes')}
+                className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-mono transition-all shrink-0 ${
+                  activeTab === 'routes'
+                    ? 'bg-nexus-800 text-cyan-300 border border-cyan-500/30 shadow-sm font-bold'
+                    : 'text-nexus-400 hover:text-nexus-200 hover:bg-nexus-900/60'
+                }`}
+              >
+                <GitBranch className="w-3.5 h-3.5 text-cyan-400" />
+                Route Decisions
+              </button>
+              <button
+                onClick={() => setActiveTab('data')}
+                className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-mono transition-all shrink-0 ${
+                  activeTab === 'data'
+                    ? 'bg-nexus-800 text-amber-300 border border-amber-500/30 shadow-sm font-bold'
+                    : 'text-nexus-400 hover:text-nexus-200 hover:bg-nexus-900/60'
+                }`}
+              >
+                <Database className="w-3.5 h-3.5 text-amber-400" />
+                Raw Data ({totalDetailed || detailedResults.length})
+              </button>
+              <button
+                onClick={() => setActiveTab('methodology')}
+                className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-mono transition-all shrink-0 ${
+                  activeTab === 'methodology'
+                    ? 'bg-nexus-800 text-violet-300 border border-violet-500/30 shadow-sm font-bold'
+                    : 'text-nexus-400 hover:text-nexus-200 hover:bg-nexus-900/60'
+                }`}
+              >
+                <BookOpen className="w-3.5 h-3.5 text-violet-400" />
+                Methodology
+              </button>
+            </div>
+
+            {/* Quick Context Filters */}
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 text-xs font-mono">
+                <span className="text-nexus-500 text-[11px] uppercase">Scenario:</span>
+                <select
+                  value={selectedScenario}
+                  onChange={(e) => setSelectedScenario(e.target.value)}
+                  className="px-2.5 py-1.5 rounded-lg bg-nexus-950 border border-nexus-800 text-nexus-300 text-xs font-mono focus:outline-none focus:border-cyan-500"
                 >
-                  <td className="py-3 px-4 font-sans text-nexus-400">
-                    {row.scenario?.replace(/_/g, ' ') || 'Overall'}
-                  </td>
-                  <td className="py-3 px-4 flex items-center gap-1.5">
-                    {row.strategy === 'adaptive_aco' && (
-                      <span className="w-1.5 h-1.5 rounded-full bg-accent-cyan shrink-0" />
-                    )}
-                    <span className="font-sans font-semibold text-nexus-200">
-                      {row.strategy_label || row.strategy}
-                    </span>
-                  </td>
-                  <td className="py-3 px-4">
-                    {row.mean_latency ? `${row.mean_latency.toFixed(1)} ms` : '—'}
-                  </td>
-                  <td className="py-3 px-4">
-                    {row.mean_packet_loss !== undefined
-                      ? `${(row.mean_packet_loss * 100).toFixed(1)}%`
-                      : '—'}
-                  </td>
-                  <td className="py-3 px-4">
-                    {row.mean_bandwidth ? `${row.mean_bandwidth.toFixed(1)} Mbps` : '—'}
-                  </td>
-                  <td className="py-3 px-4 text-nexus-400">
-                    {row.mean_hops ? row.mean_hops.toFixed(1) : '—'}
-                  </td>
-                  <td className="py-3 px-4">
-                    <span
-                      className={`inline-block px-2 py-0.5 rounded font-semibold text-[11px] ${
-                        (row.pdr ?? 0) > 95
-                          ? 'bg-accent-emerald-subtle text-accent-emerald'
-                          : (row.pdr ?? 0) > 85
-                          ? 'bg-accent-amber-subtle text-accent-amber'
-                          : 'bg-accent-coral-subtle text-accent-coral'
-                      }`}
-                    >
-                      {row.pdr ? `${row.pdr.toFixed(1)}%` : '—'}
-                    </span>
-                  </td>
-                  <td className="py-3 px-4 text-nexus-400">
-                    {row.reroute_events ?? 0}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  <option value="all">All Scenarios</option>
+                  <option value="normal">Normal</option>
+                  <option value="congestion">Congestion</option>
+                  <option value="high_latency">Latency Surge</option>
+                  <option value="packet_loss">Packet Loss</option>
+                  <option value="link_failure">Link Failure</option>
+                  <option value="dynamic_combined">Dynamic Stress</option>
+                </select>
+              </div>
+
+              <div className="flex items-center gap-1.5 text-xs font-mono">
+                <span className="text-nexus-500 text-[11px] uppercase">Strategy:</span>
+                <select
+                  value={selectedStrategy}
+                  onChange={(e) => setSelectedStrategy(e.target.value)}
+                  className="px-2.5 py-1.5 rounded-lg bg-nexus-950 border border-nexus-800 text-nexus-300 text-xs font-mono focus:outline-none focus:border-cyan-500"
+                >
+                  <option value="all">All Strategies</option>
+                  <option value="dijkstra_latency">Dijkstra Latency</option>
+                  <option value="dijkstra_fuzzy">Dijkstra Fuzzy</option>
+                  <option value="aco_fuzzy">ACO Fuzzy</option>
+                  <option value="adaptive_aco">Adaptive ACO</option>
+                </select>
+              </div>
+
+              {(selectedScenario !== 'all' || selectedStrategy !== 'all') && (
+                <button
+                  onClick={resetFilters}
+                  title="Reset Filters"
+                  className="p-1.5 rounded-lg bg-nexus-950 border border-nexus-800 text-nexus-400 hover:text-nexus-200"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          </div>
         </div>
 
-        {/* SCIENTIFIC TAKEAWAYS */}
-        <div className="rounded-2xl bg-nexus-900 border border-nexus-800 p-6 sm:p-8 space-y-5">
-          <div className="flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-accent-cyan" />
-            <h3 className="text-lg font-bold text-nexus-100">
-              Key Empirical Takeaways
-            </h3>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-xs text-nexus-300">
-            <div className="space-y-2 p-4 rounded-xl bg-nexus-950 border border-nexus-850">
-              <span className="font-mono text-accent-coral font-semibold text-[11px]">
-                Finding 01
-              </span>
-              <h4 className="font-bold text-sm text-nexus-100">
-                Static Latency Routing Fails in Congestion
-              </h4>
-              <p className="leading-relaxed text-nexus-400">
-                When traffic queues spike from 20% to 90%, raw propagation delay remains constant. Single-metric Dijkstra suffers a 28% drop in packet delivery ratio because it lacks multi-metric perception.
-              </p>
-            </div>
-
-            <div className="space-y-2 p-4 rounded-xl bg-nexus-950 border border-nexus-850">
-              <span className="font-mono text-accent-violet font-semibold text-[11px]">
-                Finding 02
-              </span>
-              <h4 className="font-bold text-sm text-nexus-100">
-                Fuzzy Evaluation Eliminates Local Bottlenecks
-              </h4>
-              <p className="leading-relaxed text-nexus-400">
-                Mamdani centroid defuzzification smoothly synthesizes packet loss, latency, and queue depth into a unified cost, steering traffic around degraded links before congestion cascades.
-              </p>
-            </div>
-
-            <div className="space-y-2 p-4 rounded-xl bg-nexus-950 border border-nexus-850">
-              <span className="font-mono text-accent-emerald font-semibold text-[11px]">
-                Finding 03
-              </span>
-              <h4 className="font-bold text-sm text-nexus-100">
-                Adaptive Closed-Loop Control is Essential
-              </h4>
-              <p className="leading-relaxed text-nexus-400">
-                Even optimal static routes deteriorate under physical link cut events. NEXUS Adaptive ACO detects degradation and executes seamless swarm reroutes within 45 ms, maintaining 98.1% overall PDR.
-              </p>
+        {/* Experimental Parameter Summary Strip */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
+          <div className="p-3 rounded-xl bg-nexus-900 border border-nexus-800">
+            <span className="text-[10px] text-nexus-400 uppercase font-mono block">Topology</span>
+            <div className="text-xs font-bold font-mono text-nexus-200 mt-0.5">
+              {metadata?.graph_topology?.num_nodes ?? 25}-Node Mesh (S{metadata?.graph_topology?.source ?? 0} → D{metadata?.graph_topology?.destination ?? 24})
             </div>
           </div>
+          <div className="p-3 rounded-xl bg-nexus-900 border border-nexus-800">
+            <span className="text-[10px] text-nexus-400 uppercase font-mono block">Baseline Seed</span>
+            <div className="text-xs font-bold font-mono text-cyan-300 mt-0.5">
+              {metadata?.graph_topology?.base_seed ?? 42} (Reproducible)
+            </div>
+          </div>
+          <div className="p-3 rounded-xl bg-nexus-900 border border-nexus-800">
+            <span className="text-[10px] text-nexus-400 uppercase font-mono block">ACO Swarm</span>
+            <div className="text-xs font-bold font-mono text-emerald-300 mt-0.5">
+              {metadata?.aco_parameters?.num_ants ?? 20} Ants · {metadata?.aco_parameters?.num_iterations ?? 50} Iter
+            </div>
+          </div>
+          <div className="p-3 rounded-xl bg-nexus-900 border border-nexus-800">
+            <span className="text-[10px] text-nexus-400 uppercase font-mono block">Adaptive Threshold</span>
+            <div className="text-xs font-bold font-mono text-violet-300 mt-0.5">
+              {metadata?.adaptive_parameters?.quality_change_threshold ? `${(metadata.adaptive_parameters.quality_change_threshold * 100).toFixed(0)}%` : '10%'} Link / {metadata?.adaptive_parameters?.route_cost_degradation_threshold ? `${(metadata.adaptive_parameters.route_cost_degradation_threshold * 100).toFixed(0)}%` : '20%'} Route
+            </div>
+          </div>
+          <div className="p-3 rounded-xl bg-nexus-900 border border-nexus-800">
+            <span className="text-[10px] text-nexus-400 uppercase font-mono block">ACO Stochastic Runs</span>
+            <div className="text-xs font-bold font-mono text-emerald-400 mt-0.5">
+              {metadata?.experiments?.aco_runs ?? 20} Runs (95% CI)
+            </div>
+          </div>
+          <div className="p-3 rounded-xl bg-nexus-900 border border-nexus-800">
+            <span className="text-[10px] text-nexus-400 uppercase font-mono block">Benchmark Date</span>
+            <div className="text-xs font-bold font-mono text-nexus-300 mt-0.5 truncate">
+              {metadata?.timestamp ? String(metadata.timestamp).split('T')[0] : '2026-10-26'}
+            </div>
+          </div>
+        </div>
+
+        {/* Active Research Studio View */}
+        <div className="space-y-8">
+          {activeTab === 'metrics' && (
+            <ScenarioMetricChart
+              summaryRows={summaryRows}
+              selectedScenario={selectedScenario}
+              selectedStrategy={selectedStrategy}
+            />
+          )}
+
+          {activeTab === 'timeline' && (
+            <TimelineChart timeline={timelineRows} loading={loading} />
+          )}
+
+          {activeTab === 'convergence' && (
+            <ConvergenceChart
+              convergenceData={convergenceRows}
+              selectedScenario={selectedScenario}
+              loading={loading}
+            />
+          )}
+
+          {activeTab === 'routes' && (
+            <RouteComparisonTable
+              summaryRows={summaryRows}
+              detailedRows={detailedResults}
+              selectedScenario={selectedScenario}
+            />
+          )}
+
+          {activeTab === 'data' && (
+            <DataTable
+              results={detailedResults}
+              total={totalDetailed}
+              loading={loading}
+            />
+          )}
+
+          {activeTab === 'methodology' && <MethodologyPanel />}
         </div>
       </div>
     </AppShell>

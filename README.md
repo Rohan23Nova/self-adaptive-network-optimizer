@@ -425,7 +425,26 @@ cd frontend
 npm test
 ```
 
-Executes 13 automated unit and component tests with Vitest and React Testing Library covering session persistence, topology rendering, node/edge selection, event payloads, decision playback, and error states.
+Executes 21 automated unit and component tests with Vitest and React Testing Library covering session persistence, topology rendering, node/edge selection, event payloads, decision playback, strategy comparison, convergence curves, dynamic timelines, and CSV data export.
+
+## Phase 8: NEXUS Research Studio & Strategy Comparison
+
+Phase 8 elevates the research and evaluation capabilities into an interactive full-stack research studio:
+
+1. **Routing Strategy Comparison (`/strategies`)**:
+   - Live head-to-head benchmarking across all four routing algorithms (`dijkstra_latency`, `dijkstra_fuzzy`, `aco_fuzzy`, `adaptive_aco`) using identical deep copies of the current network state via `POST /api/sessions/{session_id}/compare`.
+   - **Strict Metric Unit Separation**: Physical propagation delay (`ms`) and composite fuzzy cost ($w_e = 1/Q_e$, unitless scalar) are kept strictly distinct across cards, tables, and chart axes.
+   - Interactive parameter tuning controls for source/destination endpoints, ant population (5–50), ACO iterations (10–100), and reproducible random seeds.
+   - Algorithmic taxonomy breakdown highlighting single-objective baselines vs. Pareto-optimal multi-metric swarm routing.
+
+2. **NEXUS Research Studio (`/research`)**:
+   - **Cross-Scenario Metric Benchmark**: Interactive Recharts grouped bar charts comparing End-to-End Latency, Packet Loss, Bottleneck Bandwidth, Congestion, Reachability, Hop Count, and Execution Runtime across all 6 Phase 3 scenarios.
+   - **Confidence Discipline**: Displays empirical 95% Confidence Interval error bars (Student's $t$, $df=19$) strictly on repeated stochastic trials (ACO Fuzzy, $n=20$); single deterministic runs ($n=1$) display exact observed values without fabricated error bands.
+   - **10-Step Sequential Dynamic Timeline**: Synchronized dual-axis trajectory tracking physical latency recovery alongside sub-millisecond inspection overhead ($< 0.1\text{ ms}$) and on-demand ACO rerouting runtime ($\sim 19\text{ ms}$), with interactive step scrubbing and explicit unreachable disconnection indicators.
+   - **ACO Swarm Convergence Curves**: Iteration-by-iteration cost minimization histories across 50 iterations with variance envelopes and scenario filtering.
+   - **Route Selection & Trade-Off Matrix**: Node-by-node path comparisons demonstrating how fuzzy and adaptive strategies circumvent packet loss and congestion bottlenecks compared to raw latency Dijkstra.
+   - **Run-Level Benchmark Viewer & CSV Export**: Searchable and paged table of all 138 empirical trial records with browser-native CSV data export.
+   - **Scientific Methodology Panel**: Rigorous mathematical formulation of Mamdani fuzzy inference, Center of Area (COA) defuzzification, quality-to-cost inversion, ACO probabilistic state transitions, and closed-loop adaptive threshold triggers.
 
 ## Running Tests and Experiments
 

@@ -160,11 +160,18 @@ export const api = {
   },
 
   async getExperimentResults(
-    limit: number = 50,
+    scenario?: string,
+    strategy?: string,
+    limit: number = 100,
     offset: number = 0
   ): Promise<ExperimentResultsResponse> {
+    const params = new URLSearchParams();
+    if (scenario && scenario !== 'all') params.append('scenario', scenario);
+    if (strategy && strategy !== 'all') params.append('strategy', strategy);
+    params.append('limit', String(limit));
+    params.append('offset', String(offset));
     return request<ExperimentResultsResponse>(
-      `/api/experiments/results?limit=${limit}&offset=${offset}`,
+      `/api/experiments/results?${params.toString()}`,
       { method: 'GET' }
     );
   },
@@ -176,9 +183,17 @@ export const api = {
     });
   },
 
+  async getAcoConvergence(scenario?: string): Promise<ConvergenceResponse> {
+    return this.getConvergence(scenario);
+  },
+
   async getTimeline(): Promise<TimelineResponse> {
     return request<TimelineResponse>('/api/experiments/timeline', {
       method: 'GET',
     });
+  },
+
+  async getDynamicTimeline(): Promise<TimelineResponse> {
+    return this.getTimeline();
   },
 };
