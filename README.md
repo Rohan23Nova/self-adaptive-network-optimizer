@@ -332,6 +332,54 @@ curl -X POST http://127.0.0.1:8000/api/sessions/<SESSION_ID>/compare \
   -d '{"num_ants": 20, "num_iterations": 50}'
 ```
 
+## NEXUS React Frontend & Landing Page (Phase 6)
+
+A modern full-stack web interface engineered with React 18, Vite, TypeScript, and Tailwind CSS. Designed with a dark technical aesthetic inspired by high-end developer tools.
+
+```text
+React / Vite Web UI (frontend/)  ──►  FastAPI REST API (api/)  ──►  Soft-Computing Engine
+(Landing, Lab Shell, Research)        (Async REST Session Mgr)      (Fuzzy, ACO, Baselines)
+```
+
+### Visual & Architectural Design
+
+- **Dark Engineering Aesthetic**: Deep midnight/navy base (`#0B0F19`), slate/charcoal panels (`#111827`, `#1E293B`), restrained cyan (`#06B6D4`) and electric violet (`#8B5CF6`) accents, emerald (`#10B981`) for nominal health, and coral/red (`#EF4444`) for faults.
+- **Motion & Accessibility**: Subtle transitions with SVG network path illumination; strict compliance with `prefers-reduced-motion`.
+- **Honest Connection State**: Live API health monitoring via `useApiHealth`. When the FastAPI server is running, the UI displays real-time session telemetry; when offline, it falls back gracefully to a self-contained demonstration preview.
+
+### Application Pages & Shell
+
+1. **Landing Page (`/`)**:
+   - **Hero**: Eyebrow `INTELLIGENT NETWORK SYSTEMS`, headline `Networks that adapt. Intelligence you can see.`, supporting copy, dual CTAs, and a custom animated SVG network topology demonstrating autonomous bypass of congested links.
+   - **How It Works**: 3-stage loop: Sense multi-metric QoS $\to$ Evaluate fuzzy link quality $\to$ Adapt via ACO swarm rerouting.
+   - **Soft Computing Pillars**: Mamdani linguistic rules, centroid defuzzification, ACO transition probability, and closed-loop feedback.
+   - **Chaos Resilience Breakdown**: Comparative analysis of single-metric Dijkstra blackholing vs. NEXUS self-healing.
+   - **Empirical Research Highlights**: Real benchmark data table comparing PDR, latency, and packet loss across strategies.
+   - **Strategy Comparison Matrix**: Quick-reference table of the 4 algorithms.
+   - **Academic Methodology & Course Context**: Soft Computing course attribution.
+2. **Network Laboratory Shell (`/lab`)**: Simulation workbench shell with session configuration (topology selection, source/destination routers, sensitivity threshold sliders, random seed), live backend telemetry probe, and session creation pipeline.
+3. **Routing Strategies Deep Dive (`/strategies`)**: Interactive selector with algorithmic formulations, execution complexities, strengths, bottlenecks, comparative matrix, and Mamdani inference pipeline breakdown.
+4. **Experimental Research (`/research`)**: Empirical analytics viewer with scenario filtering (`baseline_normal`, `heavy_congestion`, `link_failure`, `combined_stress`), trial counts, PDR scores, and scientific takeaways.
+5. **About & Methodology (`/about`)**: Complete project history across Phases 1–6, theoretical formulas for Mamdani centroid defuzzification and ACO transition probability, and developer execution instructions.
+
+### Launching the Frontend
+
+Ensure Node.js ($\ge 18$) is installed, navigate to the `frontend/` directory, and run:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+The web application will be accessible at [http://localhost:5173](http://localhost:5173).
+
+To build the production bundle:
+
+```bash
+npm run build
+```
+
 ## Running Tests and Experiments
 
 Activate the Python virtual environment:
@@ -350,6 +398,12 @@ Launch FastAPI backend server:
 
 ```bash
 uvicorn api.main:app --host 127.0.0.1 --port 8000 --reload
+```
+
+Launch React + Vite frontend application:
+
+```bash
+cd frontend && npm run dev
 ```
 
 Launch Streamlit interactive dashboard (fallback UI):
